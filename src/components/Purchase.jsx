@@ -1,537 +1,360 @@
-import { useEffect, useRef, useState } from 'react';
-import Title from '../../utils/Title';
-import SelectArea from '../../utils/SelectArea';
-import VoucherSub from '../../utils/VoucherSub';
-import axios from "../../utils/axios";
-import { listOfStockItems } from '../../components/services/MasterService';
-import HeaderType3 from '../../utils/HeaderType3';
+import { useRef, useState } from "react";
+import {
+  formatGenericDate,
+  getDayName,
+  toISODate,
+} from "../utils/FormatGenericDate.jsx";
+import { Calendar } from "lucide-react";
+import GenericSelect from "../utils/GenericSelect.jsx";
+
+const emptyPurchaseRow = () => ({
+  id: Date.now() + Math.random(),
+  code: "",
+  desc: "",
+  qty: "",
+  uom: "",
+  rate: "",
+  disc: "",
+  gst: "",
+  amt: "",
+});
 
 const Purchase = () => {
-	const [showProduct, setShowProduct] = useState(false);
-	const [showSubForm, setShowSubForm] = useState(false);
-	const [tableData, setTableData] = useState([
-		{
-			productCode: '',
-			description: '',
-			hsn: '',
-			gst: '',
-			dueOn: '',
-			quantity: '',
-			rate: '',
-			uom: '',
-			discount: '',
-			amount: '',
-			allocation: [
-				{
-					dueOn: '',
-					location: '♦ Any',
-					batchNo: '♦ Any',
-					quantity: '',
-					rate: '',
-					uom: '',
-					discount: '',
-					amount: '',
-				},
-			],
-		},
-	]);
-	const tableRefs = useRef([]);
-	const inputRefs = useRef([]);
-	const [selectionItem, setSelectionItem] = useState('');
-	const [headerData, setHeaderData] = useState({
-		customerName: '',
-		voucherNo: '1',
-		voucherDate: '',
-        voucherType: '',
-	});
-	const [narration, setNarration] = useState('');
-	const [stockItem, setStockItem] = useState([]);
-	const [selectedProduct, setSelectedProduct] = useState(0);
-	const [focusedRow, setFocusedRow] = useState(null);
-	const [filteredStockItem, setFilterdStockItem] = useState(stockItem);
-	const display =
-		tableData.length > 1
-			? [{ stockItemName: '♦ End of List' }, ...filteredStockItem]
-			: filteredStockItem;
-	const [totalQuantity, setTotalQuantity] = useState('');
-	const [totalAmount, setTotalAmount] = useState('');
+  /* --------------------------- State --------------------------- */
 
-	const handleInputChange = (e, rowIndex) => {
-		const { value, name } = e.target;
-		const updatedData = [...tableData];
-		updatedData[rowIndex][name] = value;
-		setTableData(updatedData);
-		if (name === 'productCode') {
-			const selectedProductItem = stockItem.filter((item) =>
-				item.stockItemCode.includes(value)
-			);
-			setFilterdStockItem(selectedProductItem);
-		}
-	};
-	const handleKeyDown = (e, rowIndex, colIndex) => {
-		if (e.key === 'Enter' && e.target.value.trim() !== '') {
-			e.preventDefault();
-			const nextCell = rowIndex * 2 + colIndex + 1;
-			//usually focus next cell index
-			if (nextCell < tableRefs.current.length && tableRefs.current[nextCell]) {
-				tableRefs.current[nextCell]?.focus();
-				tableRefs.current[nextCell].setSelectionRange(0, 0);
-			} else {
-				// add new row when reach last row
-				if (rowIndex === tableData.length - 1) {
-					addRow();
-				} else {
-					tableRefs.current[(rowIndex + 1) * 2]?.focus();
-					tableRefs.current[(rowIndex + 1) * 2].setSelectionRange(0, 0);
-				}
-			}
-		} else if (e.key === 'Backspace') {
-			const prevCell = rowIndex * 2 + colIndex - 1;
-			if (prevCell >= 0 && prevCell < tableRefs.current.length) {
-				e.preventDefault();
-				tableRefs.current[prevCell]?.focus();
-				tableRefs.current[prevCell].setSelectionRange(0, 0);
-			}
-		}
-	};
-	const addRow = () => {
-		setTableData((prev) => [
-			...prev,
-			{
-				productCode: '',
-				description: '',
-				dueOn: '',
-				quantity: '',
-				rate: '',
-				uom: '',
-				discount: '',
-				amount: '',
-				allocation: [
-					{
-						dueOn: '',
-						location: '',
-						batchNo: '♦ Any',
-						quantity: '',
-						rate: '',
-						uom: '',
-						discount: '',
-						amount: '',
-					},
-				],
-			},
-		]);
-		setTimeout(() => {
-			const rowIndex = tableData.length;
-			tableRefs.current[rowIndex * 2]?.focus();
-		}, 0);
-		setFilterdStockItem(stockItem);
-	};
-	const handleFormSubmit = async () => {
-		const customerName = headerData.customerName;
-		const voucherNo = headerData.voucherNo;
-		const voucherDate = headerData.voucherDate;
-		const orderItem = tableData.map((item) => ({
-			productCode: item.productCode,
-			description: item.description,
-			dueDate: item.dueOn,
-			quantity: item.quantity,
-			rate: item.rate,
-			uom: item.uom,
-			discount: item.discount,
-			amount: item.amount,
-			batchWiseItem: item.allocation.map((batch) => ({
-				dueDate: batch.dueOn,
-				location: batch.location,
-				batchNo: batch.batchNo,
-				quantity: batch.quantity,
-				rate: batch.rate,
-				uom: batch.uom,
-				discount: batch.discount,
-				amount: batch.amount,
-			})),
-		}));
-		const data = {
-			customerName,
-			voucherNo,
-			voucherDate,
-			orderItem,
-			narration,
-		};
-		await axios.post('/transact/save', data);
-	};
-	const handleSelect = (e, item, rowIndex) => {
-		if (selectedProduct < display.length) {
-			if (e.key === 'ArrowUp' && selectedProduct > 0) {
-				setSelectedProduct((prev) => prev - 1);
-			} else if (
-				e.key === 'ArrowDown' &&
-				selectedProduct < display.length - 1
-			) {
-				setSelectedProduct((prev) => prev + 1);
-			} else if (e.key === 'Enter' && selectedProduct >= 0) {
-				onSelected(e, item[selectedProduct], rowIndex);
-				// tableRefs.current[0].focus();
-			} else if (e.key === 'Backspace') {
-				if (e.target.value !== '') {
-					return;
-				} else {
-					if (rowIndex > 0) {
-						const prevRowIndex = rowIndex - 1;
-						const prevRow = prevRowIndex * 2 + 1;
-						e.preventDefault();
-						tableRefs.current[prevRow]?.focus();
-					} else {
-						e.preventDefault();
-						inputRefs.current[0]?.focus();
-						inputRefs.current[0].setSelectionRange(0, 0);
-					}
-				}
-			}
-		}
-	};
-	const onSelected = (e, item, rowIndex) => {
-		const updatedTable = [...tableData];
-		updatedTable[rowIndex].productCode = item.stockItemCode;
-		setSelectionItem(item.stockItemName);
-		if (item.stockItemName !== '♦ End of List') {
-			setShowSubForm(true);
-		} else {
-			setShowSubForm(false);
-			e.preventDefault();
-			inputRefs.current[2]?.focus();
-			const updated = tableData.filter((_, index) => index !== rowIndex);
-			setTableData(updated);
-			setSelectedProduct(1);
-			setShowProduct(false);
-		}
-	};
-	const afterAllocation = (row) => {
-		setTimeout(() => {
-			tableRefs.current[row * 2 + 1]?.focus();
-		}, 0);
-	};
-	const handleFocus = (value) => {
-		setShowProduct(true);
-		// Reset the filtered list to the full stock item list
-		setFilterdStockItem(filteredStockItem); // Use the new display array
-		if (value) {
-			// Find the index based on `stockItemCode`
-			const index = display.findIndex(
-				(item) =>
-					item.stockItemName !== '♦ End of List' && // Exclude "End of List"
-					item.stockItemCode.toLowerCase().includes(value.toLowerCase()) // Ensure case-insensitive matching
-			);
-			setSelectedProduct(index !== -1 ? index : 0); // Set selected product index
-		} else {
-			setSelectedProduct(0); // Default to first item if no value
-		}
-	};
-	const handleTotalQty = () => {
-		const qty = tableData.reduce((sum, alloc) => {
-			const num =
-				typeof alloc.quantity === 'number'
-					? alloc.quantity
-					: parseFloat(alloc.quantity.replace(/,/g, '')) || 0;
-			return sum + num;
-		}, 0);
-		if (!isNaN(qty)) {
-			setTotalQuantity(parseFloat(qty).toFixed(2));
-		}
-	};
-	const handleTotalAmount = () => {
-		const amt = tableData.reduce(
-			(sum, alloc) => sum + parseFloat(alloc.amount),
-			0
-		);
-		if (!isNaN(amt)) setTotalAmount(parseFloat(amt).toFixed(2));
-	};
-	useEffect(() => {
-		handleTotalQty();
-		handleTotalAmount();
-		tableRefs.current = tableRefs.current.filter((ref) => ref !== null);
-	}, [tableData]);
-	useEffect(() => {
-		loadStock();
-	}, []);
-	const loadStock = async () => {
-		const result = await listOfStockItems();
-		setStockItem(result.data);
-    setFilterdStockItem(result.data)
-	};
-	
+  const [formData, setFormData] = useState({
+    voucherNo: "",
+    customerName: "",
+    vDate: toISODate(new Date()),
+    finalStatus: "Pending",
+  });
+  const [customerOptions, setCustomerOptions] = useState([]);
+  const [purchaseItem, setPurchaseItem] = useState([emptyPurchaseRow()]);
+  const [dateInputText, setDateInputText] = useState(
+    formatGenericDate(new Date(), "DD-MMM-YY"),
+  );
 
-	return (
-		<>
-			<div className="bg-emerald-100 w-full h-[580px]">
-				<Title title="Accounting Voucher Creation" nav="/" />
-				<form
-					action=""
-					className="relative"
-					onSubmit={(e) => e.preventDefault()}
-				>
-					<HeaderType3
-						title="Purchase"
-						inputRefs={inputRefs}
-						data={headerData}
-						setData={setHeaderData}
-						tableRefs={tableRefs}
-					/>
-					<div className="h-[403px] overflow-auto">
-						<table className="w-full">
-							<thead className=" bg-[#F9F3CC] text-[12px] border border-slate-300 font-semibold sticky top-0">
-								<tr className="h-[17px] leading-4 border border-slate-300">
-									<th className="w-[45px] text-center border border-slate-300">
-										S.No
-									</th>
-									<th className="w-[100px] text-center border border-slate-300">
-										Product Code
-									</th>
-									<th className="w-[420px] text-center border border-slate-300">
-										Product Description
-									</th>
-									<th className="w-[100px] text-center border border-slate-300">
-										HSN
-									</th>
-									<th className="w-[100px] text-center border border-slate-300">
-										GST
-									</th>
-									<th className="w-[60px] text-center border border-slate-300">
-										Due on
-									</th>
-									<th className="w-[70px] text-center border border-slate-300">
-										Quantity
-									</th>
-									<th className="w-[90px] text-right border border-slate-300">
-										Rate
-									</th>
-									<th className="w-[50px] text-center border border-slate-300">
-										Per
-									</th>
-									<th className="w-[70px] text-center border border-slate-300">
-										Discount
-									</th>
-									<th className="w-[70px] text-center border border-slate-300">
-										Tax %
-									</th>
-									<th className="w-[103px] text-right border border-slate-300">
-										Amount
-									</th>
+  /* ---------------------------- Refs ---------------------------- */
+
+  // [0] = Voucher No, [1] = Customer GenericSelect, [2] = Date
+  const headerRefs = useRef([]);
+  const hiddenDateRef = useRef(null);
+
+  const commitDateChange = (rawText) => {
+    const formattedDate = formatGenericDate(rawText, "DD-MMM-YY");
+
+    if (!formattedDate) {
+      setDateInputText(
+        formData.vDate ? formatGenericDate(formData.vDate, "DD-MMM-YY") : "",
+      );
+      return;
+    }
+
+    const isoDate = toISODate(rawText);
+
+    setFormData((prev) => ({
+      ...prev,
+      vDate: isoDate,
+    }));
+
+    setDateInputText(formattedDate);
+  };
+
+  const handleCustomerSelected = () => {
+    setTimeout(() => {
+      headerRefs.current[2]?.focus?.({ preventScroll: true });
+      headerRefs.current[2]?.select?.();
+    }, 0);
+  };
+
+  // Enter moves through the header fields.
+  const handleHeaderKeyDown = (event, nextElement) => {
+    if (event.key !== "Enter") return;
+
+    event.preventDefault();
+    nextElement?.focus?.();
+  };
+
+  return (
+    <div className="h-dvh w-full overflow-hidden bg-slate-200 p-1 box-border">
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xs border border-black bg-white px-1 pt-1 shadow-md">
+        <header className="shrink-0  border-b border-slate-300 pb-1 mb-1 text-[13px]">
+          <div className="flex items-center justify-between">
+            {/* Voucher number */}
+            <div className="flex items-center space-x-1">
+              <label
+                htmlFor="voucherNo"
+                className="w-32 rounded-xs bg-blue-800 text-center py-0.5 text-[12px] font-bold uppercase tracking-tight text-white"
+              >
+                Purchase
+              </label>
+
+              <span className="ml-2 font-semibold text-slate-700">No:</span>
+
+              <input
+                ref={(element) => {
+                  headerRefs.current[0] = element;
+                }}
+                id="voucherNo"
+                name="voucherNo"
+                type="text"
+                autoComplete="off"
+                value={formData.voucherNo}
+                onChange={(event) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    voucherNo: event.target.value,
+                  }))
+                }
+                onKeyDown={(event) =>
+                  handleHeaderKeyDown(event, headerRefs.current[1])
+                }
+                className="h-5 w-36 border border-amber-300 bg-[#fee8af] px-1 text-[13px] font-semibold text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+              />
+            </div>
+
+            {/* Customer */}
+            <div className="flex items-center space-x-2">
+              <label
+                htmlFor="customerName"
+                className="w-28 font-semibold text-slate-700"
+              >
+                Customer Name:
+              </label>
+
+              <input className="h-5 w-72 border border-amber-300 bg-[#fee8af] px-1 text-right text-[13px] font-semibold text-slate-900 outline-none focus:border-blue-500 focus:bg-white" />
+            </div>
+
+            {/* Date */}
+            <div className="flex items-center space-x-1">
+              <label htmlFor="vDate" className="font-semibold text-slate-700">
+                Date:
+              </label>
+
+              <input
+                ref={(element) => {
+                  headerRefs.current[2] = element;
+                }}
+                id="vDate"
+                name="vDate"
+                type="text"
+                value={dateInputText}
+                onChange={(event) => setDateInputText(event.target.value)}
+                onBlur={() => commitDateChange(dateInputText)}
+                onKeyDown={(event) =>
+                  handleHeaderKeyDown(event, executiveRefs.current[0])
+                }
+                className="h-5 w-24 border border-amber-300 bg-[#fee8af] px-1 text-right text-[13px] font-semibold text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
+              />
+
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => hiddenDateRef.current?.showPicker?.()}
+                className="outline-none text-slate-700 hover:text-black"
+                aria-label="Open date picker"
+              >
+                <Calendar size={18} />
+              </button>
+
+              <input
+                ref={hiddenDateRef}
+                type="date"
+                value={formData.vDate}
+                onChange={(event) => commitDateChange(event.target.value)}
+                className="pointer-events-none sr-only absolute"
+              />
+            </div>
+          </div>
+          {/* Row 2: Reference No and Reference Date */}
+          <div className="flex justify-between border-b border-slate-300 pt-2">
+            <div className="flex items-center gap-8  px-2 py-1">
+              <div className="flex items-center space-x-2">
+                <label
+                  htmlFor="referenceNo"
+                  className="w-28 font-semibold text-slate-700"
+                >
+                  Reference No:
+                </label>
+
+                <input className="h-5 w-45 border border-amber-300 bg-[#fee8af] px-1 text-right text-[13px] font-semibold text-slate-900 outline-none focus:border-blue-500 focus:bg-white" />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <label
+                  htmlFor="referenceDate"
+                  className="w-28 font-semibold text-slate-700"
+                >
+                  Reference Date:
+                </label>
+
+                <input className="h-5 w-28 border border-amber-300 bg-[#fee8af] px-1 text-right text-[13px] font-semibold text-slate-900 outline-none focus:border-blue-500 focus:bg-white" />
+              </div>
+            </div>
+            {formData.vDate && (
+              <span className="text-xs font-bold text-blue-800">
+                {getDayName(formData.vDate)}
+              </span>
+            )}
+          </div>
+        </header>
+
+        <main className="relative w-full flex-1 overflow-auto border border-slate-400">
+          <table className="w-full border-collapse text-left text-[12px] select-none">
+            <thead>
+              <tr className="h-6 bg-slate-300">
+                <th className="w-8 border border-slate-500 bg-slate-300 px-1 text-center">
+                  S.No
+                </th>
+                <th className="min-w-30 border border-slate-500 px-1.5">
+                  Product Code
+                </th>
+                <th className="min-w-105 border border-slate-500 px-1.5">
+                  Product Desc
+                </th>
+                <th className="w-18.75 border border-slate-500 px-1 text-center">
+                  Quantity
+                </th>
+                <th className="w-18.75 border border-slate-500 px-1 text-center">
+                  uom
+                </th>
+                <th className="w-18.75 border border-slate-500 px-1 text-center">
+                  Rate
+                </th>
+                <th className="w-18.75 border border-slate-500 px-1 text-center">
+                  Disc
+                </th>
+                <th className="w-25 border border-slate-500 px-1 text-center">
+                  Gst
+                </th>
+                <th className="w-25 border border-slate-500 px-1 text-center">
+                  Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {purchaseItem.map((item, rowIndex) => (
+                <tr key={item.id} className="hover:bg-blue-50">
+                  <td className="border border-slate-600 bg-slate-100 text-center font-bold text-slate-500">
+                    {rowIndex + 1}
+                  </td>
+                  <td className="border border-slate-600 p-0">
+                    <input
+                      type="text"
+                      className="w-full bg-transparent px-1 font-semibold text-slate-800 outline-none focus:bg-blue-100"
+                    />
+                  </td>
+				  <td className="border border-slate-600 p-0">
+                    <input
+                      type="text"
+                      className="w-full bg-transparent px-1 font-semibold text-slate-800 outline-none focus:bg-blue-100"
+                    />
+                  </td>
+				  <td className="border border-slate-600 p-0">
+                    <input
+                      type="text"
+                      className="w-full bg-transparent px-1 font-semibold text-slate-800 outline-none focus:bg-blue-100"
+                    />
+                  </td>
+				  <td className="border border-slate-600 p-0">
+                    <input
+                      type="text"
+                      className="w-full bg-transparent px-1 font-semibold text-slate-800 outline-none focus:bg-blue-100"
+                    />
+                  </td>
+				  <td className="border border-slate-600 p-0">
+                    <input
+                      type="text"
+                      className="w-full bg-transparent px-1 font-semibold text-slate-800 outline-none focus:bg-blue-100"
+                    />
+                  </td>
+				  <td className="border border-slate-600 p-0">
+                    <input
+                      type="text"
+                      className="w-full bg-transparent px-1 font-semibold text-slate-800 outline-none focus:bg-blue-100"
+                    />
+                  </td>
+				  <td className="border border-slate-600 p-0">
+                    <input
+                      type="text"
+                      className="w-full bg-transparent px-1 font-semibold text-slate-800 outline-none focus:bg-blue-100"
+                    />
+                  </td>
+				  <td className="border border-slate-600 p-0">
+                    <input
+                      type="text"
+                      className="w-full bg-transparent px-1 font-semibold text-slate-800 outline-none focus:bg-blue-100"
+                    />
+                  </td>
+                </tr>
+              ))}  
+
+			  
+				{/* Fills visible table area with empty rows */}
+							{Array.from({ length: 19 }).map((_, index) => (
+								<tr key={`dummy-${index}`} className="h-6">
+									<td className="border border-slate-200 text-center text-slate-300">
+										{purchaseItem.length + index + 1}
+									</td>
+									<td colSpan={10} className="border border-slate-200" />
 								</tr>
-							</thead>
-							<tbody>
-								{tableData.map((item, rowIndex) => (
-									<tr
-										className=" text-[13px] h-[17px] leading-4"
-										key={rowIndex}
-									>
-										<td className="text-center border border-slate-300 bg-white">
-											{rowIndex + 1}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											<input
-												ref={(input) =>
-													(tableRefs.current[rowIndex * 2 + 0] = input)
-												}
-												onChange={(e) => handleInputChange(e, rowIndex)}
-												type="text"
-												className="w-full outline-0 focus:bg-amber-300"
-												name="productCode"
-												value={item.productCode}
-												onKeyDown={(e) => handleSelect(e, display, rowIndex)}
-												onFocus={(e) => {
-													handleFocus(e.target.value)
-													setFocusedRow(rowIndex);
-												}}
-												onBlur={() => setShowProduct(false)}
-											/>
-											{showProduct && (
-												<SelectArea
-													title="List of Stock Items"
-													data={display}
-													selectIndex={selectedProduct}
-													onHandle={onSelected}
-													extraParams={rowIndex}
-												/>
-											)}
-										</td>
+							))}
+			  
+            </tbody>
+          </table>
 
-										<td className=" border border-slate-300 bg-white">
-											{/* <input
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											type="text"
-											className="w-full outline-0"
-											name="description"
-											value={item.description}
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 1] = input)
-											}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 1)}
-										/> */}
-											{item.description}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{item.hsn}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{item.gst ? item.gst + ' %' : ''}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{/* <input
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 2] = input)
-											}
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											type="text"
-											className="w-full outline-0 text-center"
-											name="dueOn"
-											value={item.dueOn}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 2)}
-										/> */}
-											{item.dueOn}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{/* <input
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 3] = input)
-											}
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											className="w-full outline-0 text-right"
-											type="text"
-											name="quantity"
-											value={item.quantity}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 3)}
-										/> */}
-											{item.quantity}
-										</td>
-										<td className="text-right border border-slate-300 bg-white">
-											{/* <input
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											className="w-full outline-0 text-right"
-											type="text"
-											name="rate"
-											value={item.rate}
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 4] = input)
-											}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 4)}
-										/> */}
-											{item.rate}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{/* <input
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											className="w-full outline-0"
-											type="text"
-											name="uom"
-											value={item.uom}
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 5] = input)
-											}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 5)}
-										/> */}
-											{item.uom}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{/* <input
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											className="w-full outline-0"
-											type="text"
-											name="discount"
-											value={item.discount}
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 6] = input)
-											}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 6)}
-										/> */}
-											{item.discount ? item.discount + ' %' : ''}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{/* <input
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											className="w-full outline-0"
-											type="text"
-											name="tax"
-											value={item.tax}
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 7] = input)
-											}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 7)}
-										/> */}
-											{item.tax ? item.tax + ' %' : ''}
-										</td>
-										<td className=" border border-slate-300 bg-white cursor-default">
-											<input
-												onChange={(e) => handleInputChange(e, rowIndex)}
-												className="w-full outline-0 text-right focus:bg-amber-300"
-												type="text"
-												name="amount"
-												value={item.amount}
-												ref={(input) =>
-													(tableRefs.current[rowIndex * 2 + 1] = input)
-												}
-												onKeyDown={(e) => handleKeyDown(e, rowIndex, 1)}
-												readOnly
-											/>
-										</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
+		  <div className="border-t border-slate-400 bg-[#f8f8f8]  lg:grid-cols-[1fr_380px]">
+          <label className="block font-semibold">
+            Narration:
+            <textarea
+              
+              className="mt-1 h-10 w-full resize-none border border-slate-400 bg-white font-normal outline-none  focus:ring-blue-300"
+              placeholder="Enter narration..."
+            />
+          </label></div>
+        </main>
 
-						{showSubForm && (
-							<VoucherSub
-								isClose={setShowSubForm}
-								selectionItem={selectionItem}
-								orderData={tableData}
-								setOrderData={setTableData}
-								allocation={tableData[focusedRow].allocation}
-								row={focusedRow}
-								afterAllocation={afterAllocation}
-							/>
-						)}
-					</div>
-					<div className="w-full flex justify-end">
-						<div className=" border-t border-b border-slate-400 h-[22px] w-[470px] flex items-center justify-between">
-							<span className="w-20 text-right text-[14px] font-semibold">
-								{totalQuantity !== '0.00' ? totalQuantity : ''}
-							</span>
-							<span className="w-20 text-right text-[14px] font-semibold">
-								{totalAmount !== '0.00' ? totalAmount : ''}
-							</span>
-						</div>
-					</div>
-					<div className="flex justify-between ">
-						<div className=" flex flex-col">
-							<label htmlFor="narration" className="text-[14px] pl-1">
-								Narration :
-							</label>
-							<textarea
-								// type="text"
-								ref={(el) => (inputRefs.current[2] = el)}
-								name="narration"
-								value={narration}
-								onChange={(e) => setNarration(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										const confirmed = window.confirm('Do you want Confirm...');
-										if (confirmed) {
-											handleFormSubmit();
-										}
-									} else if (e.key === 'Backspace') {
-										if (inputRefs.current[2].value === '') {
-											console.log();
-										}
-									}
-								}}
-								className="h-[36px] text-[13px] resize-none focus:bg-[#fee8af] overflow-hidden outline-0 focus:border focus:border-blue-400 w-[700px] bg-transparent"
-								rows={1}
-							/>
-						</div>
-					</div>
-				</form>
-			</div>
-		</>
-	);
+		 <footer className="flex  items-center justify-end gap-4 border-t border-slate-400 bg-white px-3 py-1 text-[12px] font-bold uppercase tracking-tight ">
+          
+		<div className="flex items-center space-x-2">
+              <label
+                htmlFor="customerName"
+                className="w-28 font-semibold text-slate-700"
+              >
+                Created by:
+              </label>
+
+              <input className="h-5 w-72 border border-amber-300 bg-[#fee8af] px-1 text-[13px] font-semibold text-slate-900 outline-none focus:border-blue-500 focus:bg-white" />
+            </div>
+			<div className="flex items-center space-x-2">
+              <label
+                htmlFor="customerName"
+                className="w-28 font-semibold text-slate-700"
+              >
+                Approved By:
+              </label>
+
+              <input className="h-5 w-72 border border-amber-300 bg-[#fee8af] px-1  text-[13px] font-semibold text-slate-900 outline-none focus:border-blue-500 focus:bg-white" />
+            </div>
+          <button
+            type="button"
+            // onClick={closeVoucher}
+            className="rounded border border-slate-500 bg-white px-5  font-semibold hover:bg-slate-100"
+          >
+            Close
+          </button>
+
+          <button
+            type="button"
+            // onClick={saveVoucher}
+            className="rounded bg-[#2167d5] px-5  font-bold text-white shadow hover:bg-[#1553b5]"
+          >
+            { 'Save'}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
 };
+
 export default Purchase;
