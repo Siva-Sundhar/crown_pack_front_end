@@ -1,537 +1,661 @@
-import { useEffect, useRef, useState } from 'react';
-import Title from '../../utils/Title';
-import SelectArea from '../../utils/SelectArea';
-import VoucherSub from '../../utils/VoucherSub';
-import axios from "../../utils/axios";
-import { listOfStockItems } from '../../components/services/MasterService';
-import HeaderType3 from '../../utils/HeaderType3';
+import { useMemo, useRef, useState } from 'react';
+import {
+	formatGenericDate,
+	getDayName,
+	toISODate,
+} from '../utils/FormatGenericDate.jsx';
+import { Calendar, Paperclip } from 'lucide-react';
+
+const GST_RATES = [0, 5, 12, 18, 28]; // edit this list to change every dropdown
+
+const emptyPurchaseRow = (gst = '') => ({
+	id: Date.now() + Math.random(),
+	code: '',
+	desc: '',
+	qty: '',
+	uom: '',
+	rate: '',
+	disc: '', // discount %
+	gst, // gst %
+});
+
+const num = (v) => {
+	const n = parseFloat(v);
+	return Number.isFinite(n) ? n : 0;
+};
+// Round to 2 decimals so floating point noise never reaches the screen
+const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+const money = (v) =>
+	(v || 0).toLocaleString('en-IN', {
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	});
+
+// Per-row calculation: disc and gst are percentages
+const calcRow = (r) => {
+	const gross = r2(num(r.qty) * num(r.rate));
+	const discPct = Math.min(Math.max(num(r.disc), 0), 100);
+	const discAmt = r2((gross * discPct) / 100);
+	return { gross, discAmt, taxable: r2(gross - discAmt), rate: num(r.gst) };
+};
+
+const columns = [
+	{ key: 'code', label: 'Product Code', width: 'w-32', align: 'text-left' },
+	{
+		key: 'desc',
+		label: 'Product Desc',
+		width: 'min-w-[240px]',
+		align: 'text-left',
+	},
+	{
+		key: 'qty',
+		label: 'Qty',
+		width: 'w-20',
+		align: 'text-right',
+		numeric: true,
+	},
+	{ key: 'uom', label: 'UOM', width: 'w-20', align: 'text-center' },
+	{
+		key: 'rate',
+		label: 'Rate',
+		width: 'w-24',
+		align: 'text-right',
+		numeric: true,
+	},
+	{
+		key: 'disc',
+		label: 'Disc %',
+		width: 'w-20',
+		align: 'text-right',
+		numeric: true,
+	},
+	{
+		key: 'gst',
+		label: 'GST %',
+		width: 'w-20',
+		align: 'text-right',
+		numeric: true,
+	},
+];
+
+const headerInput =
+	'h-4.5 border border-amber-300 bg-[#fee8af] px-1 text-slate-900 outline-none focus:border-blue-500 focus:bg-white';
+
+const Line = ({ label, value, bold }) => (
+	<div
+		className={`flex justify-between ${bold ? 'font-bold text-slate-900' : 'text-slate-700'}`}
+	>
+		<span>{label}</span>
+		<span className="tabular-nums">{money(value)}</span>
+	</div>
+);
 
 const Purchase = () => {
-	const [showProduct, setShowProduct] = useState(false);
-	const [showSubForm, setShowSubForm] = useState(false);
-	const [tableData, setTableData] = useState([
-		{
-			productCode: '',
-			description: '',
-			hsn: '',
-			gst: '',
-			dueOn: '',
-			quantity: '',
-			rate: '',
-			uom: '',
-			discount: '',
-			amount: '',
-			allocation: [
-				{
-					dueOn: '',
-					location: '♦ Any',
-					batchNo: '♦ Any',
-					quantity: '',
-					rate: '',
-					uom: '',
-					discount: '',
-					amount: '',
-				},
-			],
-		},
-	]);
-	const tableRefs = useRef([]);
-	const inputRefs = useRef([]);
-	const [selectionItem, setSelectionItem] = useState('');
-	const [headerData, setHeaderData] = useState({
+	/* --------------------------- State --------------------------- */
+	const [formData, setFormData] = useState({
+		voucherNo: '',
 		customerName: '',
-		voucherNo: '1',
-		voucherDate: '',
-        voucherType: '',
+		referenceNo: '',
+		referenceDate: '',
+		narration: '',
+		createdBy: '',
+		approvedBy: '',
+		vDate: toISODate(new Date()),
+		finalStatus: 'Pending',
+		transport: '',
+		transportGst: '',
+		taxType: 'intra', // "intra" = CGST + SGST, "inter" = IGST
+		autoRound: true,
 	});
-	const [narration, setNarration] = useState('');
-	const [stockItem, setStockItem] = useState([]);
-	const [selectedProduct, setSelectedProduct] = useState(0);
-	const [focusedRow, setFocusedRow] = useState(null);
-	const [filteredStockItem, setFilterdStockItem] = useState(stockItem);
-	const display =
-		tableData.length > 1
-			? [{ stockItemName: '♦ End of List' }, ...filteredStockItem]
-			: filteredStockItem;
-	const [totalQuantity, setTotalQuantity] = useState('');
-	const [totalAmount, setTotalAmount] = useState('');
+	const [purchaseItem, setPurchaseItem] = useState([emptyPurchaseRow()]);
+	const [dateInputText, setDateInputText] = useState(
+		formatGenericDate(new Date(), 'DD-MMM-YY'),
+	);
+	const fileInputRef = useRef(null);
+	const [attachments, setAttachments] = useState([]);
 
-	const handleInputChange = (e, rowIndex) => {
-		const { value, name } = e.target;
-		const updatedData = [...tableData];
-		updatedData[rowIndex][name] = value;
-		setTableData(updatedData);
-		if (name === 'productCode') {
-			const selectedProductItem = stockItem.filter((item) =>
-				item.stockItemCode.includes(value)
+	/* ---------------------------- Refs ---------------------------- */
+	const headerRefs = useRef([]);
+	const hiddenDateRef = useRef(null);
+	const gridRefs = useRef({}); // `${rowIndex}-${colIndex}` -> input
+
+	/* -------------------------- Handlers -------------------------- */
+	const setField = (name) => (e) =>
+		setFormData((prev) => ({ ...prev, [name]: e.target.value }));
+
+	const commitDateChange = (rawText) => {
+		const formattedDate = formatGenericDate(rawText, 'DD-MMM-YY');
+		if (!formattedDate) {
+			setDateInputText(
+				formData.vDate ? formatGenericDate(formData.vDate, 'DD-MMM-YY') : '',
 			);
-			setFilterdStockItem(selectedProductItem);
+			return;
 		}
+		setFormData((prev) => ({ ...prev, vDate: toISODate(rawText) }));
+		setDateInputText(formattedDate);
 	};
-	const handleKeyDown = (e, rowIndex, colIndex) => {
-		if (e.key === 'Enter' && e.target.value.trim() !== '') {
-			e.preventDefault();
-			const nextCell = rowIndex * 2 + colIndex + 1;
-			//usually focus next cell index
-			if (nextCell < tableRefs.current.length && tableRefs.current[nextCell]) {
-				tableRefs.current[nextCell]?.focus();
-				tableRefs.current[nextCell].setSelectionRange(0, 0);
-			} else {
-				// add new row when reach last row
-				if (rowIndex === tableData.length - 1) {
-					addRow();
-				} else {
-					tableRefs.current[(rowIndex + 1) * 2]?.focus();
-					tableRefs.current[(rowIndex + 1) * 2].setSelectionRange(0, 0);
-				}
-			}
-		} else if (e.key === 'Backspace') {
-			const prevCell = rowIndex * 2 + colIndex - 1;
-			if (prevCell >= 0 && prevCell < tableRefs.current.length) {
-				e.preventDefault();
-				tableRefs.current[prevCell]?.focus();
-				tableRefs.current[prevCell].setSelectionRange(0, 0);
-			}
-		}
+
+	const handleHeaderKeyDown = (event, nextElement) => {
+		if (event.key !== 'Enter') return;
+		event.preventDefault();
+		nextElement?.focus?.();
 	};
-	const addRow = () => {
-		setTableData((prev) => [
-			...prev,
-			{
-				productCode: '',
-				description: '',
-				dueOn: '',
-				quantity: '',
-				rate: '',
-				uom: '',
-				discount: '',
-				amount: '',
-				allocation: [
-					{
-						dueOn: '',
-						location: '',
-						batchNo: '♦ Any',
-						quantity: '',
-						rate: '',
-						uom: '',
-						discount: '',
-						amount: '',
-					},
-				],
-			},
-		]);
-		setTimeout(() => {
-			const rowIndex = tableData.length;
-			tableRefs.current[rowIndex * 2]?.focus();
-		}, 0);
-		setFilterdStockItem(stockItem);
-	};
-	const handleFormSubmit = async () => {
-		const customerName = headerData.customerName;
-		const voucherNo = headerData.voucherNo;
-		const voucherDate = headerData.voucherDate;
-		const orderItem = tableData.map((item) => ({
-			productCode: item.productCode,
-			description: item.description,
-			dueDate: item.dueOn,
-			quantity: item.quantity,
-			rate: item.rate,
-			uom: item.uom,
-			discount: item.discount,
-			amount: item.amount,
-			batchWiseItem: item.allocation.map((batch) => ({
-				dueDate: batch.dueOn,
-				location: batch.location,
-				batchNo: batch.batchNo,
-				quantity: batch.quantity,
-				rate: batch.rate,
-				uom: batch.uom,
-				discount: batch.discount,
-				amount: batch.amount,
-			})),
-		}));
-		const data = {
-			customerName,
-			voucherNo,
-			voucherDate,
-			orderItem,
-			narration,
-		};
-		await axios.post('/transact/save', data);
-	};
-	const handleSelect = (e, item, rowIndex) => {
-		if (selectedProduct < display.length) {
-			if (e.key === 'ArrowUp' && selectedProduct > 0) {
-				setSelectedProduct((prev) => prev - 1);
-			} else if (
-				e.key === 'ArrowDown' &&
-				selectedProduct < display.length - 1
-			) {
-				setSelectedProduct((prev) => prev + 1);
-			} else if (e.key === 'Enter' && selectedProduct >= 0) {
-				onSelected(e, item[selectedProduct], rowIndex);
-				// tableRefs.current[0].focus();
-			} else if (e.key === 'Backspace') {
-				if (e.target.value !== '') {
-					return;
-				} else {
-					if (rowIndex > 0) {
-						const prevRowIndex = rowIndex - 1;
-						const prevRow = prevRowIndex * 2 + 1;
-						e.preventDefault();
-						tableRefs.current[prevRow]?.focus();
-					} else {
-						e.preventDefault();
-						inputRefs.current[0]?.focus();
-						inputRefs.current[0].setSelectionRange(0, 0);
-					}
-				}
-			}
-		}
-	};
-	const onSelected = (e, item, rowIndex) => {
-		const updatedTable = [...tableData];
-		updatedTable[rowIndex].productCode = item.stockItemCode;
-		setSelectionItem(item.stockItemName);
-		if (item.stockItemName !== '♦ End of List') {
-			setShowSubForm(true);
-		} else {
-			setShowSubForm(false);
-			e.preventDefault();
-			inputRefs.current[2]?.focus();
-			const updated = tableData.filter((_, index) => index !== rowIndex);
-			setTableData(updated);
-			setSelectedProduct(1);
-			setShowProduct(false);
-		}
-	};
-	const afterAllocation = (row) => {
-		setTimeout(() => {
-			tableRefs.current[row * 2 + 1]?.focus();
-		}, 0);
-	};
-	const handleFocus = (value) => {
-		setShowProduct(true);
-		// Reset the filtered list to the full stock item list
-		setFilterdStockItem(filteredStockItem); // Use the new display array
-		if (value) {
-			// Find the index based on `stockItemCode`
-			const index = display.findIndex(
-				(item) =>
-					item.stockItemName !== '♦ End of List' && // Exclude "End of List"
-					item.stockItemCode.toLowerCase().includes(value.toLowerCase()) // Ensure case-insensitive matching
-			);
-			setSelectedProduct(index !== -1 ? index : 0); // Set selected product index
-		} else {
-			setSelectedProduct(0); // Default to first item if no value
-		}
-	};
-	const handleTotalQty = () => {
-		const qty = tableData.reduce((sum, alloc) => {
-			const num =
-				typeof alloc.quantity === 'number'
-					? alloc.quantity
-					: parseFloat(alloc.quantity.replace(/,/g, '')) || 0;
-			return sum + num;
-		}, 0);
-		if (!isNaN(qty)) {
-			setTotalQuantity(parseFloat(qty).toFixed(2));
-		}
-	};
-	const handleTotalAmount = () => {
-		const amt = tableData.reduce(
-			(sum, alloc) => sum + parseFloat(alloc.amount),
-			0
+
+	const updateRow = (rowIndex, key, value) =>
+		setPurchaseItem((rows) =>
+			rows.map((r, i) => (i === rowIndex ? { ...r, [key]: value } : r)),
 		);
-		if (!isNaN(amt)) setTotalAmount(parseFloat(amt).toFixed(2));
+
+	const applyGstToAll = (rate) => {
+		if (rate === '') return;
+		setPurchaseItem((rows) => rows.map((r) => ({ ...r, gst: rate })));
 	};
-	useEffect(() => {
-		handleTotalQty();
-		handleTotalAmount();
-		tableRefs.current = tableRefs.current.filter((ref) => ref !== null);
-	}, [tableData]);
-	useEffect(() => {
-		loadStock();
-	}, []);
-	const loadStock = async () => {
-		const result = await listOfStockItems();
-		setStockItem(result.data);
-    setFilterdStockItem(result.data)
+
+	const s = 'assssssssssssssssssssssssssssssssssssssssssdddasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasasaasasasas';
+
+	// Enter moves right; at the last column it goes to the next row (adds one if needed)
+	const handleGridKeyDown = (e, rowIndex, colIndex) => {
+		if (e.key !== 'Enter') return;
+		e.preventDefault();
+console.log(s.length);
+
+		const isLastCol = colIndex === columns.length - 1;
+		const nextRow = isLastCol ? rowIndex + 1 : rowIndex;
+		const nextCol = isLastCol ? 0 : colIndex + 1;
+
+		if (nextRow >= purchaseItem.length) {
+			setPurchaseItem((rows) => [
+				...rows,
+				emptyPurchaseRow(rows[rows.length - 1]?.gst ?? ''),
+			]);
+			setTimeout(() => gridRefs.current[`${nextRow}-${nextCol}`]?.focus(), 0);
+			return;
+		}
+		gridRefs.current[`${nextRow}-${nextCol}`]?.focus();
 	};
-	
+
+	const handleFiles = (e) => {
+		setAttachments(Array.from(e.target.files || []));
+	};
+
+	/* ------------------------- Calculations ------------------------ */
+	const totals = useMemo(() => {
+		const slabMap = new Map(); // gst rate -> taxable value
+		let gross = 0,
+			disc = 0,
+			itemsTaxable = 0;
+
+		purchaseItem.forEach((row) => {
+			const c = calcRow(row);
+			gross += c.gross;
+			disc += c.discAmt;
+			itemsTaxable += c.taxable;
+			if (c.taxable)
+				slabMap.set(c.rate, (slabMap.get(c.rate) || 0) + c.taxable);
+		});
+
+		// Transport is taxable, so it joins the slab of its own GST %
+		const transport = r2(Math.max(num(formData.transport), 0));
+		if (transport) {
+			const rate = num(formData.transportGst);
+			slabMap.set(rate, (slabMap.get(rate) || 0) + transport);
+		}
+
+		const slabs = [...slabMap.entries()]
+			.sort((a, b) => a[0] - b[0])
+			.map(([rate, t]) => {
+				const taxable = r2(t);
+				const tax = r2((taxable * rate) / 100);
+				const cgst = r2(tax / 2);
+				const sgst = r2(tax - cgst); // guarantees cgst + sgst === tax
+				return { rate, taxable, tax, cgst, sgst };
+			});
+
+		const sum = (k) => r2(slabs.reduce((s, x) => s + x[k], 0));
+		const taxable = r2(itemsTaxable + transport);
+		const tax = sum('tax');
+		const beforeRound = r2(taxable + tax);
+		const roundOff = formData.autoRound
+			? r2(Math.round(beforeRound) - beforeRound)
+			: 0;
+
+		return {
+			gross: r2(gross),
+			disc: r2(disc),
+			transport,
+			taxable,
+			cgst: sum('cgst'),
+			sgst: sum('sgst'),
+			tax,
+			roundOff,
+			net: r2(beforeRound + roundOff),
+			slabs,
+		};
+	}, [
+		purchaseItem,
+		formData.transport,
+		formData.transportGst,
+		formData.autoRound,
+	]);
+
+	const isIntra = formData.taxType === 'intra';
 
 	return (
-		<>
-			<div className="bg-emerald-100 w-full h-[580px]">
-				<Title title="Accounting Voucher Creation" nav="/" />
-				<form
-					action=""
-					className="relative"
-					onSubmit={(e) => e.preventDefault()}
-				>
-					<HeaderType3
-						title="Purchase"
-						inputRefs={inputRefs}
-						data={headerData}
-						setData={setHeaderData}
-						tableRefs={tableRefs}
-					/>
-					<div className="h-[403px] overflow-auto">
-						<table className="w-full">
-							<thead className=" bg-[#F9F3CC] text-[12px] border border-slate-300 font-semibold sticky top-0">
-								<tr className="h-[17px] leading-4 border border-slate-300">
-									<th className="w-[45px] text-center border border-slate-300">
-										S.No
-									</th>
-									<th className="w-[100px] text-center border border-slate-300">
-										Product Code
-									</th>
-									<th className="w-[420px] text-center border border-slate-300">
-										Product Description
-									</th>
-									<th className="w-[100px] text-center border border-slate-300">
-										HSN
-									</th>
-									<th className="w-[100px] text-center border border-slate-300">
-										GST
-									</th>
-									<th className="w-[60px] text-center border border-slate-300">
-										Due on
-									</th>
-									<th className="w-[70px] text-center border border-slate-300">
-										Quantity
-									</th>
-									<th className="w-[90px] text-right border border-slate-300">
-										Rate
-									</th>
-									<th className="w-[50px] text-center border border-slate-300">
-										Per
-									</th>
-									<th className="w-[70px] text-center border border-slate-300">
-										Discount
-									</th>
-									<th className="w-[70px] text-center border border-slate-300">
-										Tax %
-									</th>
-									<th className="w-[103px] text-right border border-slate-300">
-										Amount
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{tableData.map((item, rowIndex) => (
-									<tr
-										className=" text-[13px] h-[17px] leading-4"
-										key={rowIndex}
-									>
-										<td className="text-center border border-slate-300 bg-white">
-											{rowIndex + 1}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											<input
-												ref={(input) =>
-													(tableRefs.current[rowIndex * 2 + 0] = input)
-												}
-												onChange={(e) => handleInputChange(e, rowIndex)}
-												type="text"
-												className="w-full outline-0 focus:bg-amber-300"
-												name="productCode"
-												value={item.productCode}
-												onKeyDown={(e) => handleSelect(e, display, rowIndex)}
-												onFocus={(e) => {
-													handleFocus(e.target.value)
-													setFocusedRow(rowIndex);
-												}}
-												onBlur={() => setShowProduct(false)}
-											/>
-											{showProduct && (
-												<SelectArea
-													title="List of Stock Items"
-													data={display}
-													selectIndex={selectedProduct}
-													onHandle={onSelected}
-													extraParams={rowIndex}
-												/>
-											)}
-										</td>
-
-										<td className=" border border-slate-300 bg-white">
-											{/* <input
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											type="text"
-											className="w-full outline-0"
-											name="description"
-											value={item.description}
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 1] = input)
-											}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 1)}
-										/> */}
-											{item.description}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{item.hsn}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{item.gst ? item.gst + ' %' : ''}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{/* <input
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 2] = input)
-											}
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											type="text"
-											className="w-full outline-0 text-center"
-											name="dueOn"
-											value={item.dueOn}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 2)}
-										/> */}
-											{item.dueOn}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{/* <input
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 3] = input)
-											}
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											className="w-full outline-0 text-right"
-											type="text"
-											name="quantity"
-											value={item.quantity}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 3)}
-										/> */}
-											{item.quantity}
-										</td>
-										<td className="text-right border border-slate-300 bg-white">
-											{/* <input
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											className="w-full outline-0 text-right"
-											type="text"
-											name="rate"
-											value={item.rate}
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 4] = input)
-											}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 4)}
-										/> */}
-											{item.rate}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{/* <input
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											className="w-full outline-0"
-											type="text"
-											name="uom"
-											value={item.uom}
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 5] = input)
-											}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 5)}
-										/> */}
-											{item.uom}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{/* <input
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											className="w-full outline-0"
-											type="text"
-											name="discount"
-											value={item.discount}
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 6] = input)
-											}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 6)}
-										/> */}
-											{item.discount ? item.discount + ' %' : ''}
-										</td>
-										<td className="text-center border border-slate-300 bg-white">
-											{/* <input
-											onChange={(e) => handleInputChange(e, rowIndex)}
-											className="w-full outline-0"
-											type="text"
-											name="tax"
-											value={item.tax}
-											ref={(input) =>
-												(tableRefs.current[rowIndex * 9 + 7] = input)
-											}
-											onKeyDown={(e) => handleKeyDown(e, rowIndex, 7)}
-										/> */}
-											{item.tax ? item.tax + ' %' : ''}
-										</td>
-										<td className=" border border-slate-300 bg-white cursor-default">
-											<input
-												onChange={(e) => handleInputChange(e, rowIndex)}
-												className="w-full outline-0 text-right focus:bg-amber-300"
-												type="text"
-												name="amount"
-												value={item.amount}
-												ref={(input) =>
-													(tableRefs.current[rowIndex * 2 + 1] = input)
-												}
-												onKeyDown={(e) => handleKeyDown(e, rowIndex, 1)}
-												readOnly
-											/>
-										</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
-
-						{showSubForm && (
-							<VoucherSub
-								isClose={setShowSubForm}
-								selectionItem={selectionItem}
-								orderData={tableData}
-								setOrderData={setTableData}
-								allocation={tableData[focusedRow].allocation}
-								row={focusedRow}
-								afterAllocation={afterAllocation}
+		<div className="h-dvh w-full overflow-hidden bg-slate-200 p-1 box-border">
+			<div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xs border border-black bg-white shadow-md">
+				{/* ============ 1. FIXED HEADER ============ */}
+				<header className="shrink-0 border-b border-slate-300 px-2 py-1 text-[13px] ">
+					<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+						<div className="flex items-center gap-1">
+							<label
+								htmlFor="voucherNo"
+								className="rounded-xs bg-blue-800 px-3 text-[12px] font-bold uppercase text-white"
+							>
+								Purchase
+							</label>
+							<span className="ml-1 font-semibold text-slate-700">No</span>
+							:
+							<input
+								ref={(el) => (headerRefs.current[0] = el)}
+								id="voucherNo"
+								type="text"
+								autoComplete="off"
+								value={formData.voucherNo}
+								onChange={setField('voucherNo')}
+								onKeyDown={(e) => handleHeaderKeyDown(e, headerRefs.current[1])}
+								className={`${headerInput} w-28 sm:w-36`}
 							/>
+						</div>
+
+						<div className="flex items-center gap-2">
+							<label
+								htmlFor="referenceNo"
+								className="font-semibold text-slate-700 whitespace-nowrap"
+							>
+								Ref No
+							</label>
+							:
+							<input
+								ref={(el) => (headerRefs.current[3] = el)}
+								id="referenceNo"
+								value={formData.referenceNo}
+								onChange={setField('referenceNo')}
+								onKeyDown={(e) => handleHeaderKeyDown(e, headerRefs.current[4])}
+								className={`${headerInput} w-28 sm:w-36 `}
+							/>
+						</div>
+						<div className="flex items-center gap-2">
+							<label
+								htmlFor="referenceDate"
+								className="font-semibold text-slate-700 whitespace-nowrap"
+							>
+								Ref Date
+							</label>
+							:
+							<input
+								ref={(el) => (headerRefs.current[4] = el)}
+								id="referenceDate"
+								value={formData.referenceDate}
+								onChange={setField('referenceDate')}
+								onKeyDown={(e) =>
+									handleHeaderKeyDown(e, gridRefs.current['0-0'])
+								}
+								className={`${headerInput} w-22 text-right`}
+							/>
+						</div>
+
+						<div className="flex items-center gap-1 sm:ml-auto">
+							<label htmlFor="vDate" className="font-semibold text-slate-700">
+								Date
+							</label>
+							:
+							<input
+								ref={(el) => (headerRefs.current[2] = el)}
+								id="vDate"
+								type="text"
+								value={dateInputText}
+								onChange={(e) => setDateInputText(e.target.value)}
+								onBlur={() => commitDateChange(dateInputText)}
+								onKeyDown={(e) => handleHeaderKeyDown(e, headerRefs.current[3])}
+								className={`${headerInput} w-22 text-right`}
+							/>
+							<button
+								type="button"
+								tabIndex={-1}
+								onClick={() => hiddenDateRef.current?.showPicker?.()}
+								className="text-slate-700 outline-none hover:text-black"
+								aria-label="Open date picker"
+							>
+								<Calendar size={18} />
+							</button>
+							<input
+								ref={hiddenDateRef}
+								type="date"
+								value={formData.vDate}
+								onChange={(e) => commitDateChange(e.target.value)}
+								className="pointer-events-none absolute sr-only"
+							/>
+						</div>
+					</div>
+
+					<div className="mt-1 flex flex-wrap items-center gap-x-6 gap-y-1">
+						<div className="flex min-w-50 flex-1 items-center gap-1">
+							<label
+								htmlFor="customerName"
+								className="font-semibold text-slate-700 whitespace-nowrap w-28"
+							>
+								Customer
+							</label>
+							:
+							<input
+								ref={(el) => (headerRefs.current[1] = el)}
+								id="customerName"
+								type="text"
+								autoComplete="off"
+								value={formData.customerName}
+								onChange={setField('customerName')}
+								onKeyDown={(e) => handleHeaderKeyDown(e, headerRefs.current[2])}
+								className={`${headerInput} w-91`}
+							/>
+						</div>
+						{formData.vDate && (
+							<span className="ml-1 text-xs font-bold text-blue-800">
+								{getDayName(formData.vDate)}
+							</span>
 						)}
 					</div>
-					<div className="w-full flex justify-end">
-						<div className=" border-t border-b border-slate-400 h-[22px] w-[470px] flex items-center justify-between">
-							<span className="w-20 text-right text-[14px] font-semibold">
-								{totalQuantity !== '0.00' ? totalQuantity : ''}
-							</span>
-							<span className="w-20 text-right text-[14px] font-semibold">
-								{totalAmount !== '0.00' ? totalAmount : ''}
-							</span>
+				</header>
+
+				{/* ============ 2. SCROLLABLE TABLE ============ */}
+				<main className="min-h-0 flex-1 overflow-auto">
+					<table className="w-full min-w-180 border-collapse text-[12px]">
+						<thead className="sticky top-0 z-10">
+							<tr className=" bg-slate-300">
+								<th className="w-10 border border-slate-400 bg-slate-300 px-1 text-center">
+									S.No
+								</th>
+								{columns.map((c) => (
+									<th
+										key={c.key}
+										className={`${c.width} border border-slate-400 bg-slate-300 px-1.5 ${c.align}`}
+									>
+										{c.label}
+									</th>
+								))}
+								<th className="w-28 border border-slate-400 bg-slate-300 px-1.5 text-right">
+									Amount
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							{purchaseItem.map((item, rowIndex) => (
+								<tr key={item.id} className="hover:bg-blue-50">
+									<td className="border border-slate-300 bg-slate-100 text-center font-bold text-slate-500">
+										{rowIndex + 1}
+									</td>
+									{columns.map((c, colIndex) => (
+										<td key={c.key} className="border border-slate-300 p-0">
+											<input
+												ref={(el) =>
+													(gridRefs.current[`${rowIndex}-${colIndex}`] = el)
+												}
+												type="text"
+												inputMode={c.numeric ? 'decimal' : 'text'}
+												value={item[c.key]}
+												onChange={(e) =>
+													updateRow(rowIndex, c.key, e.target.value)
+												}
+												onKeyDown={(e) =>
+													handleGridKeyDown(e, rowIndex, colIndex)
+												}
+												className={`w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none focus:bg-blue-100 ${c.align}`}
+											/>
+										</td>
+									))}
+									<td className="border border-slate-300 bg-slate-50 px-1.5 text-right font-bold tabular-nums">
+										{money(calcRow(item).total)}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</main>
+
+				{/* ============ 3. BOTTOM: LEFT 70% (GST slabs + narration) | RIGHT 30% (summary) ============ */}
+				<section className="grid max-h-[45dvh] shrink-0 grid-cols-1 overflow-y-auto border-t border-slate-400 bg-[#f8f8f8] text-[12px] md:h-32.5 md:max-h-none md:grid-cols-[7fr_3fr] md:overflow-visible leading-3.5">
+					{/* LEFT */}
+					<div className="grid min-h-0 min-w-0 md:grid-rows-[minmax(0,2.3fr)_minmax(0,2fr)] md:border-r md:border-slate-300 ">
+						{/* Top half: GST slab table */}
+						<div className="flex min-h-0 flex-col border-b border-slate-300 p-1 bg-">
+							{/* <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-0.5 pb-0.5 font-semibold text-slate-700">
+								<label className="flex items-center gap-1">
+									Tax:
+									<select
+										value={formData.taxType}
+										onChange={setField('taxType')}
+										className={headerInput}
+									>
+										<option value="intra">CGST + SGST</option>
+										<option value="inter">IGST</option>
+									</select>
+								</label>
+								<label className="flex items-center gap-1">
+									GST % for all rows:
+									<select
+										value=""
+										onChange={(e) => applyGstToAll(e.target.value)}
+										className={headerInput}
+									>
+										<option value="">Select</option>
+										{GST_RATES.map((r) => (
+											<option key={r} value={r}>
+												{r}%
+											</option>
+										))}
+									</select>
+								</label>
+							</div> */}
+
+							<div className="min-h-0 flex-1 overflow-auto border border-slate-300  max-md:max-h-24">
+								<table className="w-full border-collapse tabular-nums">
+									<thead className="sticky top-0 bg-slate-200">
+										<tr>
+											<th className="px-1 text-left">GST %</th>
+											<th className="px-1 text-right">Taxable</th>
+											{isIntra ? (
+												<>
+													<th className="px-1 text-right">CGST</th>
+													<th className="px-1 text-right">SGST</th>
+												</>
+											) : (
+												<th className="px-1 text-right">IGST</th>
+											)}
+											<th className="px-1 text-right">Total</th>
+										</tr>
+									</thead>
+									<tbody>
+										{totals.slabs.length === 0 ? (
+											<tr>
+												<td
+													colSpan={isIntra ? 5 : 4}
+													className="px-1 text-center text-slate-400"
+												>
+													No items
+												</td>
+											</tr>
+										) : (
+											totals.slabs.map((s) => (
+												<tr key={s.rate} className="border-t border-slate-200">
+													<td className="px-1 font-semibold">{s.rate}%</td>
+													<td className="px-1 text-right">
+														{money(s.taxable)}
+													</td>
+													{isIntra ? (
+														<>
+															<td className="px-1 text-right">
+																{money(s.cgst)}
+															</td>
+															<td className="px-1 text-right">
+																{money(s.sgst)}
+															</td>
+														</>
+													) : (
+														<td className="px-1 text-right">{money(s.tax)}</td>
+													)}
+													<td className="px-1 text-right font-semibold">
+														{money(s.taxable + s.tax)}
+													</td>
+												</tr>
+											))
+										)}
+									</tbody>
+								</table>
+							</div>
 						</div>
-					</div>
-					<div className="flex justify-between ">
-						<div className=" flex flex-col">
-							<label htmlFor="narration" className="text-[14px] pl-1">
-								Narration :
-							</label>
+
+						{/* Bottom half: narration */}
+						<label className="flex min-h-0 flex-col px-1 pt-0.5 font-semibold text-slate-700">
+							Narration:
 							<textarea
-								// type="text"
-								ref={(el) => (inputRefs.current[2] = el)}
-								name="narration"
-								value={narration}
-								onChange={(e) => setNarration(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										const confirmed = window.confirm('Do you want Confirm...');
-										if (confirmed) {
-											handleFormSubmit();
-										}
-									} else if (e.key === 'Backspace') {
-										if (inputRefs.current[2].value === '') {
-											console.log();
-										}
-									}
-								}}
-								className="h-[36px] text-[13px] resize-none focus:bg-[#fee8af] overflow-hidden outline-0 focus:border focus:border-blue-400 w-[700px] bg-transparent"
-								rows={1}
+								value={formData.narration}
+								onChange={setField('narration')}
+								placeholder="Enter narration..."
+								className="mt-0.5 h-8 w-full resize-none border border-slate-400 bg-white px-1 text-[12px] font-normal text-slate-900 outline-none focus:border-blue-500  "
 							/>
+						</label>
+					</div>
+
+					{/* RIGHT: summary */}
+					<div className="min-w-0 border-t border-slate-300 p-1.5 md:border-t-0">
+						<Line label="Gross Amount" value={totals.gross} />
+						<Line label="Discount" value={-totals.disc} />
+
+						<div className="flex items-center justify-between gap-1 text-slate-700">
+							<span>Transport</span>
+							<div className="flex items-center gap-1">
+								<select
+									value={formData.transportGst}
+									onChange={setField('transportGst')}
+									className={`${headerInput} w-14`}
+									aria-label="Transport GST %"
+								>
+									<option value="">-</option>
+									{GST_RATES.map((r) => (
+										<option key={r} value={r}>
+											{r}%
+										</option>
+									))}
+								</select>
+								<input
+									inputMode="decimal"
+									value={formData.transport}
+									onChange={setField('transport')}
+									className={`${headerInput} w-20 text-right`}
+								/>
+							</div>
+						</div>
+
+						<Line label="Taxable Value" value={totals.taxable} />
+						{isIntra ? (
+							<>
+								<Line label="CGST" value={totals.cgst} />
+								<Line label="SGST" value={totals.sgst} />
+							</>
+						) : (
+							<Line label="IGST" value={totals.tax} />
+						)}
+
+						<div className="flex justify-between text-slate-700">
+							<label className="flex items-center gap-1">
+								<input
+									type="checkbox"
+									checked={formData.autoRound}
+									onChange={(e) =>
+										setFormData((p) => ({ ...p, autoRound: e.target.checked }))
+									}
+								/>
+								Round off
+							</label>
+							<span className="tabular-nums">
+								{totals.roundOff > 0 ? '+' : ''}
+								{money(totals.roundOff)}
+							</span>
+						</div>
+
+						<div className="mt-0.5 border-t border-slate-400 pt-0.5 text-[13px]">
+							<Line label="Net Total" value={totals.net} bold />
 						</div>
 					</div>
-				</form>
+				</section>
+				{/* ============ 4. FIXED FOOTER ============ */}
+				<footer className="flex shrink-0 flex-wrap items-center justify-end gap-x-4 gap-y-1 border-t border-slate-400 bg-white px-2 py-1 text-[12px]">
+					<div className="flex items-center gap-1">
+						<input
+							ref={fileInputRef}
+							type="file"
+							onChange={handleFiles}
+							className="hidden"
+						/>
+						<button
+							type="button"
+							onClick={() => fileInputRef.current?.click()}
+							className="flex h-4.5 items-center gap-1 rounded  border border-blue-400 bg-blue-50 px-2 font-semibold text-blue-800 outline-none hover:border-blue-600 hover:bg-blue-100 focus-visible:ring-1 focus-visible:ring-blue-400"
+						>
+							<Paperclip size={12} />
+							Attach document
+							{attachments.length > 0 && (
+								<span className="ml-0.5 rounded-full bg-blue-800 px-1.5 text-[10px] leading-3.5 text-white">
+									{attachments.length}
+								</span>
+							)}
+						</button>
+					</div>
+					<div className="flex items-center gap-2">
+						<label
+							htmlFor="createdBy"
+							className="font-semibold text-slate-700 whitespace-nowrap"
+						>
+							Created by:
+						</label>
+						<input
+							id="createdBy"
+							value={formData.createdBy}
+							onChange={setField('createdBy')}
+							className={`${headerInput} w-32 sm:w-44`}
+						/>
+					</div>
+					<div className="flex items-center gap-2">
+						<label
+							htmlFor="approvedBy"
+							className="font-semibold text-slate-700 whitespace-nowrap"
+						>
+							Approved by:
+						</label>
+						<input
+							id="approvedBy"
+							value={formData.approvedBy}
+							onChange={setField('approvedBy')}
+							className={`${headerInput} w-32 sm:w-44`}
+						/>
+					</div>
+					<div className="flex gap-2">
+						{/* <button
+							type="button"
+							className="rounded border border-slate-500 bg-white px-5 font-semibold hover:bg-slate-100"
+						>
+							Close
+						</button> */}
+						<button
+							type="button"
+							className="rounded bg-[#2167d5] px-5 font-bold text-white shadow hover:bg-[#1553b5]"
+						>
+							Save
+						</button>
+					</div>
+				</footer>
 			</div>
-		</>
+		</div>
 	);
 };
+
 export default Purchase;

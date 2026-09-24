@@ -10,13 +10,14 @@ import {
 	ShoppingBag,
 	User,
 } from 'lucide-react';
+import api from './api';
 
 const initialCredentials = { username: '', password: '' };
 
   const LoginPage = () => {
 	const [credentials, setCredentials] = useState(initialCredentials);
 	const [showPassword, setShowPassword] = useState(false);
-	const [rememberMe, setRememberMe] = useState(false);
+	
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState('');
 
@@ -38,17 +39,16 @@ const initialCredentials = { username: '', password: '' };
 		setLoading(true);
 
 		try {
-			// Replace this delay with your real authentication API call.
-			await new Promise((resolve) => setTimeout(resolve, 800));
+			
+			const response = api.post('/api/auth/authentication/login', {username, password});
 
-			sessionStorage.setItem('po_user_token', 'mock-jwt-token');
+			console.log(response);
+			
+			
+			sessionStorage.setItem('user_token', '');
 			sessionStorage.setItem('po_username', username);
 
-			if (rememberMe) {
-				localStorage.setItem('po_remembered_username', username);
-			} else {
-				localStorage.removeItem('po_remembered_username');
-			}
+			
 		} catch {
 			setError('Invalid credentials. Please try again.');
 		} finally {
@@ -196,7 +196,7 @@ const initialCredentials = { username: '', password: '' };
 							</div>
 						</div>
 
-						<label className="flex items-center gap-2 cursor-pointer pt-0.5">
+						{/* <label className="flex items-center gap-2 cursor-pointer pt-0.5">
 							<input
 								type="checkbox"
 								checked={rememberMe}
@@ -206,7 +206,7 @@ const initialCredentials = { username: '', password: '' };
 							<span className="text-[11px] text-slate-600">
 								Remember session
 							</span>
-						</label>
+						</label> */}
 
 						<button
 							type="submit"
