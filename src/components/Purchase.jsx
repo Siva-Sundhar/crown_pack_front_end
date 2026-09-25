@@ -6,9 +6,8 @@ import {
 } from "../utils/FormatGenericDate.jsx";
 import GenericSelect from "../utils/GenericSelect.jsx";
 import { Calendar, ChevronDown, ChevronUp, Paperclip } from "lucide-react";
-import item from "../utils/item.js";
 
-const GST_RATES = [0, 5, 12, 18, 28]; // edit this list to change every dropdown
+const GST_RATES = [0, 5, 12, 18, 28];
 
 const emptyPurchaseRow = (gst = "") => ({
   id: Date.now() + Math.random(),
@@ -17,23 +16,23 @@ const emptyPurchaseRow = (gst = "") => ({
   qty: "",
   uom: "",
   rate: "",
-  disc: "", // discount %
-  gst, // gst %
+  disc: "",
+  gst,
 });
 
 const num = (v) => {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : 0;
 };
-// Round to 2 decimals so floating point noise never reaches the screen
+
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
 const money = (v) =>
   (v || 0).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 
-// Per-row calculation: disc and gst are percentages
 const calcRow = (r) => {
   const gross = r2(num(r.qty) * num(r.rate));
   const discPct = Math.min(Math.max(num(r.disc), 0), 100);
@@ -41,44 +40,6 @@ const calcRow = (r) => {
   return { gross, discAmt, taxable: r2(gross - discAmt), rate: num(r.gst) };
 };
 
-const columns = [
-  { key: "code", label: "Product Code", width: "w-32", align: "text-left" },
-  {
-    key: "desc",
-    label: "Product Desc",
-    width: "min-w-[240px]",
-    align: "text-left",
-  },
-  {
-    key: "qty",
-    label: "Qty",
-    width: "w-20",
-    align: "text-right",
-    numeric: true,
-  },
-  { key: "uom", label: "UOM", width: "w-20", align: "text-center" },
-  {
-    key: "rate",
-    label: "Rate",
-    width: "w-24",
-    align: "text-right",
-    numeric: true,
-  },
-  {
-    key: "disc",
-    label: "Disc %",
-    width: "w-20",
-    align: "text-right",
-    numeric: true,
-  },
-  {
-    key: "gst",
-    label: "GST %",
-    width: "w-20",
-    align: "text-right",
-    numeric: true,
-  },
-];
 const headerInput =
   "h-5 border border-amber-300 bg-[#fee8af] px-1 text-slate-900 outline-none focus:border-blue-500 focus:bg-white";
 
@@ -91,8 +52,10 @@ const Line = ({ label, value, bold }) => (
   </div>
 );
 
+// Editable column indices: Product(0), Qty(1), Rate(2), Disc(3), GST(4)
+const EDITABLE_COLS = [0, 1, 2, 3, 4];
+
 const Purchase = () => {
-  /* --------------------------- State --------------------------- */
   const [formData, setFormData] = useState({
     voucherNo: "",
     customerName: "",
@@ -105,11 +68,10 @@ const Purchase = () => {
     finalStatus: "Pending",
     transport: "",
     transportGst: "",
-    taxType: "intra", // "intra" = CGST + SGST, "inter" = IGST
+    taxType: "intra",
     autoRound: true,
   });
 
-  const [productItem, setProductItem] = useState(item);
   const [purchaseItem, setPurchaseItem] = useState([emptyPurchaseRow()]);
   const [dateInputText, setDateInputText] = useState(
     formatGenericDate(new Date(), "DD-MMM-YY"),
@@ -118,14 +80,10 @@ const Purchase = () => {
   const [attachments, setAttachments] = useState([]);
   const [isLast, setIsLast] = useState(true);
 
-  /* ---------------------------- Refs ---------------------------- */
   const headerRefs = useRef([]);
   const hiddenDateRef = useRef(null);
-  const gridRefs = useRef({}); // `${rowIndex}-${colIndex}` -> input
+  const gridRefs = useRef({});
 
-  
-
-  /* -------------------------- Handlers -------------------------- */
   const setField = (name) => (e) =>
     setFormData((prev) => ({ ...prev, [name]: e.target.value }));
 
@@ -157,21 +115,17 @@ const Purchase = () => {
     setPurchaseItem((rows) => rows.map((r) => ({ ...r, gst: rate })));
   };
 
-  // Editable column indices in your table
-  const EDITABLE_COL_INDICES = [0, 2, 4, 5, 6]; // Product, Qty, Rate, Disc, GST
-
-  const handleGridKeyDown = (e, rowIndex, actualColIndex) => {
+  const handleGridKeyDown = (e, rowIndex, colIndex) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
 
-    // Find position of current col in the editable array
-    const pos = EDITABLE_COL_INDICES.indexOf(actualColIndex);
-    const isLastEditable = pos === EDITABLE_COL_INDICES.length - 1;
+    const pos = EDITABLE_COLS.indexOf(colIndex);
+    const isLastEditable = pos === EDITABLE_COLS.length - 1;
 
     const nextRow = isLastEditable ? rowIndex + 1 : rowIndex;
     const nextCol = isLastEditable
-      ? EDITABLE_COL_INDICES[0] // wrap to first editable col (0)
-      : EDITABLE_COL_INDICES[pos + 1];
+      ? EDITABLE_COLS[0]
+      : EDITABLE_COLS[pos + 1];
 
     if (nextRow >= purchaseItem.length) {
       setPurchaseItem((rows) => [
@@ -183,39 +137,13 @@ const Purchase = () => {
     }
     gridRefs.current[`${nextRow}-${nextCol}`]?.focus();
   };
-  // Enter moves right; at the last column it goes to the next row (adds one if needed)
-  // const handleGridKeyDown = (e, rowIndex, colIndex) => {
-  //   if (e.key !== "Enter") return;
-  //   e.preventDefault();
-
-  //   const isLastCol = colIndex === columns.length - 1;
-  //   const nextRow = isLastCol ? rowIndex + 1 : rowIndex;
-  //   const nextCol = isLastCol ? 0 : colIndex + 1;
-
-  //   if (nextRow >= purchaseItem.length) {
-  //     setPurchaseItem((rows) => [
-  //       ...rows,
-  //       emptyPurchaseRow(rows[rows.length - 1]?.gst ?? ""),
-  //     ]);
-  //     setTimeout(() => gridRefs.current[`${nextRow}-${nextCol}`]?.focus(), 0);
-  //     return;
-  //   }
-  //   gridRefs.current[`${nextRow}-${nextCol}`]?.focus();
-  // };
-
-  const productOptions = productItem.map((product) => ({
-  label: `${product.partNo} | ${product.itemName} | ${product.uom}`,
-  value: product.partNo,
-  product,
-}));
 
   const handleFiles = (e) => {
     setAttachments(Array.from(e.target.files || []));
   };
 
-  /* ------------------------- Calculations ------------------------ */
   const totals = useMemo(() => {
-    const slabMap = new Map(); // gst rate -> taxable value
+    const slabMap = new Map();
     let gross = 0,
       disc = 0,
       itemsTaxable = 0;
@@ -229,7 +157,6 @@ const Purchase = () => {
         slabMap.set(c.rate, (slabMap.get(c.rate) || 0) + c.taxable);
     });
 
-    // Transport is taxable, so it joins the slab of its own GST %
     const transport = r2(Math.max(num(formData.transport), 0));
     if (transport) {
       const rate = num(formData.transportGst);
@@ -242,7 +169,7 @@ const Purchase = () => {
         const taxable = r2(t);
         const tax = r2((taxable * rate) / 100);
         const cgst = r2(tax / 2);
-        const sgst = r2(tax - cgst); // guarantees cgst + sgst === tax
+        const sgst = r2(tax - cgst);
         return { rate, taxable, tax, cgst, sgst };
       });
 
@@ -278,18 +205,17 @@ const Purchase = () => {
   return (
     <div className="h-dvh w-full overflow-hidden bg-slate-200 p-1 box-border">
       <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xs border border-black bg-white shadow-md">
-        {/* ============ 1. FIXED HEADER ============ */}
-        <header className="shrink-0 border-b border-slate-300 px-2 py-1 text-[13px] ">
+        {/* ============ HEADER ============ */}
+        <header className="shrink-0 border-b border-slate-300 px-2 py-1 text-[13px]">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <div className="flex items-center gap-1">
               <label
                 htmlFor="voucherNo"
-                className="rounded-xs bg-blue-800 px-3 text-[12px] font-bold uppercase text-white "
+                className="rounded-xs bg-blue-800 px-3 text-[12px] font-bold uppercase text-white"
               >
                 Purchase
               </label>
-              <span className="ml-1 font-semibold text-slate-700">No</span>
-              :
+              <span className="ml-1 font-semibold text-slate-700">No</span>:
               <input
                 ref={(el) => (headerRefs.current[0] = el)}
                 id="voucherNo"
@@ -316,9 +242,10 @@ const Purchase = () => {
                 value={formData.referenceNo}
                 onChange={setField("referenceNo")}
                 onKeyDown={(e) => handleHeaderKeyDown(e, headerRefs.current[2])}
-                className={`${headerInput} w-28 sm:w-36 `}
+                className={`${headerInput} w-28 sm:w-36`}
               />
             </div>
+
             <div className="flex items-center gap-2">
               <label
                 htmlFor="referenceDate"
@@ -387,9 +314,7 @@ const Purchase = () => {
                 autoComplete="off"
                 value={formData.customerName}
                 onChange={setField("customerName")}
-                onKeyDown={(e) =>
-                  handleHeaderKeyDown(e, gridRefs.current["0-0"])
-                }
+                onKeyDown={(e) => handleHeaderKeyDown(e, gridRefs.current["0-0"])}
                 className={`${headerInput} w-90.5`}
               />
             </div>
@@ -401,22 +326,35 @@ const Purchase = () => {
           </div>
         </header>
 
-        {/* ============ 2. SCROLLABLE TABLE ============ */}
+        {/* ============ TABLE ============ */}
         <main className="min-h-0 flex-1 overflow-auto">
           <table className="w-full min-w-180 border-collapse text-[12px]">
             <thead className="sticky top-0 z-10">
-              <tr className=" bg-slate-300">
+              <tr className="bg-slate-300">
                 <th className="w-10 border border-slate-400 bg-slate-300 px-1 text-center">
                   S.No
                 </th>
-                {columns.map((c) => (
-                  <th
-                    key={c.key}
-                    className={`${c.width} border border-slate-400 bg-slate-300 px-1.5 ${c.align}`}
-                  >
-                    {c.label}
-                  </th>
-                ))}
+                <th className="w-32 border border-slate-400 bg-slate-300 px-1.5 text-left">
+                  Product Code
+                </th>
+                <th className="min-w-[240px] border border-slate-400 bg-slate-300 px-1.5 text-left">
+                  Product Desc
+                </th>
+                <th className="w-20 border border-slate-400 bg-slate-300 px-1.5 text-right">
+                  Qty
+                </th>
+                <th className="w-20 border border-slate-400 bg-slate-300 px-1.5 text-center">
+                  UOM
+                </th>
+                <th className="w-24 border border-slate-400 bg-slate-300 px-1.5 text-right">
+                  Rate
+                </th>
+                <th className="w-20 border border-slate-400 bg-slate-300 px-1.5 text-right">
+                  Disc %
+                </th>
+                <th className="w-20 border border-slate-400 bg-slate-300 px-1.5 text-right">
+                  GST %
+                </th>
                 <th className="w-28 border border-slate-400 bg-slate-300 px-1.5 text-right">
                   Amount
                 </th>
@@ -428,119 +366,98 @@ const Purchase = () => {
                   <td className="border border-slate-300 bg-slate-100 text-center font-bold text-slate-500">
                     {rowIndex + 1}
                   </td>
-                  {/* {columns.map((c, colIndex) => (
-                    <td key={c.key} className="border border-slate-300 p-0">
-                      <input
-                        ref={(el) =>
-                          (gridRefs.current[`${rowIndex}-${colIndex}`] = el)
-                        }
-                        type="text"
-                        inputMode={c.numeric ? "decimal" : "text"}
-                        value={item[c.key]}
-                        onChange={(e) =>
-                          updateRow(rowIndex, c.key, e.target.value)
-                        }
-                        onKeyDown={(e) =>
-                          handleGridKeyDown(e, rowIndex, colIndex)
-                        }
-                        className={`w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none focus:bg-blue-100 ${c.align}`}
-                      />
-                    </td>
-                  ))} */}
 
-                  {/* Product Code - index 0 */}
+                  {/* Product Code - col 0 */}
                   <td className="border border-slate-300 bg-slate-50">
                     <GenericSelect
-                    options={productOptions}
                       ref={(el) => (gridRefs.current[`${rowIndex}-0`] = el)}
                       onKeyDown={(e) => handleGridKeyDown(e, rowIndex, 0)}
                       placeholder="Select Product..."
                       title="Products"
-                      
+                      value={item.code}
+                      onChange={(val) => {
+                        setPurchaseItem((rows) =>
+                          rows.map((r, i) =>
+                            i === rowIndex ? { ...r, code: val, desc: val?.desc || "" } : r,
+                          ),
+                        );
+                      }}
                     />
                   </td>
 
-                  {/* Description - read-only, no ref needed */}
+                  {/* Description - read-only */}
                   <td className="border border-slate-300 bg-slate-50">
                     <input
                       readOnly
                       type="text"
-                      name="desc"
-                      value={item.desc} // ← bind to item.desc
-                      className={`w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none`}
+                      value={item.desc}
+                      className="w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none"
                     />
                   </td>
 
-                  {/* Qty - index 2 */}
+                  {/* Qty - col 1 */}
+                  <td className="border border-slate-300 bg-slate-50">
+                    <input
+                      ref={(el) => (gridRefs.current[`${rowIndex}-1`] = el)}
+                      onKeyDown={(e) => handleGridKeyDown(e, rowIndex, 1)}
+                      type="text"
+                      inputMode="decimal"
+                      value={item.qty}
+                      onChange={(e) => updateRow(rowIndex, "qty", e.target.value)}
+                      className="w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none focus:bg-blue-100 text-right"
+                    />
+                  </td>
+
+                  {/* UOM - read-only */}
+                  <td className="border border-slate-300 bg-slate-50">
+                    <input
+                      readOnly
+                      type="text"
+                      value={item.uom}
+                      className="w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none text-center"
+                    />
+                  </td>
+
+                  {/* Rate - col 2 */}
                   <td className="border border-slate-300 bg-slate-50">
                     <input
                       ref={(el) => (gridRefs.current[`${rowIndex}-2`] = el)}
                       onKeyDown={(e) => handleGridKeyDown(e, rowIndex, 2)}
                       type="text"
-                      name="qty"
-                      value={item.qty} // ← bind value
-                      onChange={(e) =>
-                        updateRow(rowIndex, e.target.name, e.target.value)
-                      }
-                      className={`w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none focus:bg-blue-100`}
+                      inputMode="decimal"
+                      value={item.rate}
+                      onChange={(e) => updateRow(rowIndex, "rate", e.target.value)}
+                      className="w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none focus:bg-blue-100 text-right"
                     />
                   </td>
 
-                  {/* UOM - read-only, no ref needed */}
+                  {/* Disc - col 3 */}
                   <td className="border border-slate-300 bg-slate-50">
                     <input
-                      readOnly
-                      name="uom"
-                      value={item.uom} // ← bind to item.uom
+                      ref={(el) => (gridRefs.current[`${rowIndex}-3`] = el)}
+                      onKeyDown={(e) => handleGridKeyDown(e, rowIndex, 3)}
                       type="text"
-                      className={`w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none`}
+                      inputMode="decimal"
+                      value={item.disc}
+                      onChange={(e) => updateRow(rowIndex, "disc", e.target.value)}
+                      className="w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none focus:bg-blue-100 text-right"
                     />
                   </td>
 
-                  {/* Rate - index 4 */}
+                  {/* GST - col 4 (last editable) */}
                   <td className="border border-slate-300 bg-slate-50">
                     <input
                       ref={(el) => (gridRefs.current[`${rowIndex}-4`] = el)}
                       onKeyDown={(e) => handleGridKeyDown(e, rowIndex, 4)}
                       type="text"
-                      name="rate"
-                      value={item.rate} // ← bind value
-                      onChange={(e) =>
-                        updateRow(rowIndex, e.target.name, e.target.value)
-                      }
-                      className={`w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none focus:bg-blue-100`}
+                      inputMode="decimal"
+                      value={item.gst}
+                      onChange={(e) => updateRow(rowIndex, "gst", e.target.value)}
+                      className="w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none focus:bg-blue-100 text-right"
                     />
                   </td>
 
-                  {/* Disc - index 5 */}
-                  <td className="border border-slate-300 bg-slate-50">
-                    <input
-                      ref={(el) => (gridRefs.current[`${rowIndex}-5`] = el)}
-                      onKeyDown={(e) => handleGridKeyDown(e, rowIndex, 5)}
-                      type="text"
-                      name="disc"
-                      value={item.disc} // ← bind value
-                      onChange={(e) =>
-                        updateRow(rowIndex, e.target.name, e.target.value)
-                      }
-                      className={`w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none focus:bg-blue-100`}
-                    />
-                  </td>
-
-                  {/* GST - index 6 (LAST EDITABLE - triggers new row) */}
-                  <td className="border border-slate-300 bg-slate-50">
-                    <input
-                      ref={(el) => (gridRefs.current[`${rowIndex}-6`] = el)}
-                      onKeyDown={(e) => handleGridKeyDown(e, rowIndex, 6)}
-                      type="text"
-                      name="gst"
-                      value={item.gst} // ← bind value
-                      onChange={(e) =>
-                        updateRow(rowIndex, e.target.name, e.target.value)
-                      }
-                      className={`w-full bg-transparent px-1.5 font-semibold text-slate-800 outline-none focus:bg-blue-100`}
-                    />
-                  </td>
+                  {/* Amount */}
                   <td className="border border-slate-300 bg-slate-50 px-1.5 text-right font-bold tabular-nums">
                     {money(calcRow(item).gross)}
                   </td>
@@ -550,6 +467,7 @@ const Purchase = () => {
           </table>
         </main>
 
+        {/* ============ COLLAPSE BUTTON ============ */}
         <button
           type="button"
           tabIndex={-1}
@@ -557,49 +475,20 @@ const Purchase = () => {
           aria-expanded={isLast}
           className="flex h-4.5 shrink-0 items-center justify-between border-t border-slate-400 bg-slate-200 px-2 text-[12px] font-semibold text-slate-700 outline-none hover:bg-slate-300"
         >
-          <span className="flex items-center gap-1">GST &amp; Expenses</span>
+          <span className="flex items-center gap-1">GST & Expenses</span>
           {isLast ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
           <span className="tabular-nums">
             Total: <b className="text-slate-900">{money(totals.gross)}</b>
           </span>
         </button>
-        {/* ============ 3. BOTTOM: LEFT 70% (GST slabs + narration) | RIGHT 30% (summary) ============ */}
+
+        {/* ============ GST & SUMMARY ============ */}
         {isLast && (
           <section className="grid max-h-[45dvh] shrink-0 grid-cols-1 overflow-y-auto border-t border-slate-400 bg-[#f8f8f8] text-[12px] md:h-32.5 md:max-h-none md:grid-cols-[7fr_3fr] md:overflow-visible leading-3.5">
-            {/* LEFT */}
-            <div className="grid min-h-0 min-w-0 md:grid-rows-[minmax(0,2.3fr)_minmax(0,2fr)] md:border-r md:border-slate-300 ">
-              {/* Top half: GST slab table */}
-              <div className="flex min-h-0 flex-col border-b border-slate-300 p-1 bg-">
-                {/* <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-0.5 pb-0.5 font-semibold text-slate-700">
-								<label className="flex items-center gap-1">
-									Tax:
-									<select
-										value={formData.taxType}
-										onChange={setField('taxType')}
-										className={headerInput}
-									>
-										<option value="intra">CGST + SGST</option>
-										<option value="inter">IGST</option>
-									</select>
-								</label>
-								<label className="flex items-center gap-1">
-									GST % for all rows:
-									<select
-										value=""
-										onChange={(e) => applyGstToAll(e.target.value)}
-										className={headerInput}
-									>
-										<option value="">Select</option>
-										{GST_RATES.map((r) => (
-											<option key={r} value={r}>
-												{r}%
-											</option>
-										))}
-									</select>
-								</label>
-							</div> */}
-
-                <div className="min-h-0 flex-1 overflow-auto border border-slate-300  max-md:max-h-24">
+            {/* LEFT - GST Slabs */}
+            <div className="grid min-h-0 min-w-0 md:grid-rows-[minmax(0,2.3fr)_minmax(0,2fr)] md:border-r md:border-slate-300">
+              <div className="flex min-h-0 flex-col border-b border-slate-300 p-1">
+                <div className="min-h-0 flex-1 overflow-auto border border-slate-300 max-md:max-h-24">
                   <table className="w-full border-collapse tabular-nums">
                     <thead className="sticky top-0 bg-slate-200">
                       <tr>
@@ -619,36 +508,22 @@ const Purchase = () => {
                     <tbody>
                       {totals.slabs.length === 0 ? (
                         <tr>
-                          <td
-                            colSpan={isIntra ? 5 : 4}
-                            className="px-1 text-center text-slate-400"
-                          >
+                          <td colSpan={isIntra ? 5 : 4} className="px-1 text-center text-slate-400">
                             No items
                           </td>
                         </tr>
                       ) : (
                         totals.slabs.map((s) => (
-                          <tr
-                            key={s.rate}
-                            className="border-t border-slate-200"
-                          >
+                          <tr key={s.rate} className="border-t border-slate-200">
                             <td className="px-1 font-semibold">{s.rate}%</td>
-                            <td className="px-1 text-right">
-                              {money(s.taxable)}
-                            </td>
+                            <td className="px-1 text-right">{money(s.taxable)}</td>
                             {isIntra ? (
                               <>
-                                <td className="px-1 text-right">
-                                  {money(s.cgst)}
-                                </td>
-                                <td className="px-1 text-right">
-                                  {money(s.sgst)}
-                                </td>
+                                <td className="px-1 text-right">{money(s.cgst)}</td>
+                                <td className="px-1 text-right">{money(s.sgst)}</td>
                               </>
                             ) : (
-                              <td className="px-1 text-right">
-                                {money(s.tax)}
-                              </td>
+                              <td className="px-1 text-right">{money(s.tax)}</td>
                             )}
                             <td className="px-1 text-right font-semibold">
                               {money(s.taxable + s.tax)}
@@ -660,11 +535,9 @@ const Purchase = () => {
                   </table>
                 </div>
               </div>
-
-              {/* Bottom half: narration */}
             </div>
 
-            {/* RIGHT: summary */}
+            {/* RIGHT - Summary */}
             <div className="min-w-0 border-t border-slate-300 p-1.5 md:border-t-0">
               <Line label="Gross Amount" value={totals.gross} />
               <Line label="Discount" value={-totals.disc} />
@@ -710,10 +583,7 @@ const Purchase = () => {
                     type="checkbox"
                     checked={formData.autoRound}
                     onChange={(e) =>
-                      setFormData((p) => ({
-                        ...p,
-                        autoRound: e.target.checked,
-                      }))
+                      setFormData((p) => ({ ...p, autoRound: e.target.checked }))
                     }
                   />
                   Round off
@@ -730,7 +600,8 @@ const Purchase = () => {
             </div>
           </section>
         )}
-        {/* ============ 4. FIXED FOOTER ============ */}
+
+        {/* ============ FOOTER ============ */}
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-slate-400 bg-white px-2 py-1 text-[13px]">
           <div className="flex items-center gap-2">
             <label
@@ -746,6 +617,7 @@ const Purchase = () => {
               className={`${headerInput} w-36 sm:w-72`}
             />
           </div>
+
           <div className="flex gap-4">
             <div className="flex items-center gap-1">
               <input
@@ -762,12 +634,13 @@ const Purchase = () => {
                 <Paperclip size={12} />
                 Attach document
                 {attachments.length > 0 && (
-                  <span className="ml-0.5 rounded-full bg-blue-800 px-1.5 text-[10px]  text-white">
+                  <span className="ml-0.5 rounded-full bg-blue-800 px-1.5 text-[10px] text-white">
                     {attachments.length}
                   </span>
                 )}
               </button>
             </div>
+
             <div className="flex items-center gap-2">
               <label
                 htmlFor="createdBy"
@@ -775,7 +648,7 @@ const Purchase = () => {
               >
                 Created by
               </label>
-              :{" "}
+              :
               <input
                 id="createdBy"
                 value={formData.createdBy}
@@ -783,6 +656,7 @@ const Purchase = () => {
                 className={`${headerInput} w-32 sm:w-44`}
               />
             </div>
+
             <div className="flex items-center gap-2">
               <label
                 htmlFor="approvedBy"
@@ -798,13 +672,8 @@ const Purchase = () => {
                 className={`${headerInput} w-32 sm:w-44`}
               />
             </div>
+
             <div className="flex gap-2">
-              {/* <button
-							type="button"
-							className="rounded border border-slate-500 bg-white px-5 font-semibold hover:bg-slate-100"
-						>
-							Close
-						</button> */}
               <button
                 type="button"
                 className="rounded bg-[#2167d5] px-5 font-bold text-white shadow hover:bg-[#1553b5]"
