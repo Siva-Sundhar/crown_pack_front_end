@@ -4,16 +4,16 @@ import {
   useRef,
   forwardRef,
   useImperativeHandle,
-} from 'react';
+} from "react";
 
 const GenericSelect = forwardRef(function GenericSelect(
   {
     options = [],
     value = null,
     onChange,
-    labelKey = 'label',
-    valueKey = 'value',
-    placeholder = 'Select...',
+    labelKey = "label",
+    valueKey = "value",
+    placeholder = "Select...",
     onSelect,
     disabled = false,
     title,
@@ -29,7 +29,7 @@ const GenericSelect = forwardRef(function GenericSelect(
   ref,
 ) {
   const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(0);
 
   const containerRef = useRef(null);
@@ -47,21 +47,22 @@ const GenericSelect = forwardRef(function GenericSelect(
   }));
 
   const getOptionLabel = (option) => {
-    if (!option) return '';
-    if (typeof option === 'string' || typeof option === 'number') return String(option);
-    return String(option[labelKey] ?? option.label ?? '');
+    if (!option) return "";
+    if (typeof option === "string" || typeof option === "number")
+      return String(option);
+    return String(option[labelKey] ?? option.label ?? "");
   };
 
   const getOptionValue = (option) => {
-    if (option === null || option === undefined) return '';
-    if (typeof option === 'string' || typeof option === 'number') return option;
-    return option[valueKey] ?? option.value ?? '';
+    if (option === null || option === undefined) return "";
+    if (typeof option === "string" || typeof option === "number") return option;
+    return option[valueKey] ?? option.value ?? "";
   };
 
   // Keep input text synced with selected value when dropdown is closed
   useEffect(() => {
     if (!isOpen) {
-      setSearchTerm(value ? getOptionLabel(value) : '');
+      setSearchTerm(value ? getOptionLabel(value) : "");
     }
   }, [value, labelKey, isOpen]);
 
@@ -71,9 +72,9 @@ const GenericSelect = forwardRef(function GenericSelect(
     const focusedEl = listRef.current.querySelector('[data-focused="true"]');
     if (focusedEl) {
       focusedEl.scrollIntoView({
-        behavior: 'auto',
-        block: 'nearest',
-        inline: 'nearest',
+        behavior: "auto",
+        block: "nearest",
+        inline: "nearest",
       });
     }
   }, [focusedIndex, isOpen]);
@@ -83,11 +84,11 @@ const GenericSelect = forwardRef(function GenericSelect(
     const handleClickOutside = (e) => {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
         setIsOpen(false);
-        setSearchTerm(value ? getOptionLabel(value) : '');
+        setSearchTerm(value ? getOptionLabel(value) : "");
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [value]);
 
   // Filter options ONLY if the user typed while open
@@ -105,7 +106,7 @@ const GenericSelect = forwardRef(function GenericSelect(
 
   const openMenu = () => {
     // Keep search term matching the current value, but show all options
-    const currentLabel = value ? getOptionLabel(value) : '';
+    const currentLabel = value ? getOptionLabel(value) : "";
     setSearchTerm(currentLabel);
 
     if (options.length === 0) {
@@ -137,7 +138,7 @@ const GenericSelect = forwardRef(function GenericSelect(
     if (disabled) return;
 
     if (!isOpen) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      if (e.key === "ArrowDown" || e.key === "Enter") {
         e.preventDefault();
         openMenu();
       }
@@ -147,7 +148,7 @@ const GenericSelect = forwardRef(function GenericSelect(
     const hasOptions = filteredOptions.length > 0;
 
     switch (e.key) {
-      case 'ArrowDown': {
+      case "ArrowDown": {
         e.preventDefault();
         if (!hasOptions) {
           setFocusedIndex(-1);
@@ -160,7 +161,7 @@ const GenericSelect = forwardRef(function GenericSelect(
         break;
       }
 
-      case 'ArrowUp': {
+      case "ArrowUp": {
         e.preventDefault();
         if (!hasOptions) {
           setFocusedIndex(-1);
@@ -174,12 +175,12 @@ const GenericSelect = forwardRef(function GenericSelect(
         break;
       }
 
-      case 'Enter': {
+      case "Enter": {
         e.preventDefault();
         if (focusedIndex === -1) {
           onCreate?.(title);
           setIsOpen(false);
-          setSearchTerm(value ? getOptionLabel(value) : '');
+          setSearchTerm(value ? getOptionLabel(value) : "");
           return;
         }
 
@@ -190,10 +191,10 @@ const GenericSelect = forwardRef(function GenericSelect(
         break;
       }
 
-      case 'Escape':
+      case "Escape":
         e.preventDefault();
         setIsOpen(false);
-        setSearchTerm(value ? getOptionLabel(value) : '');
+        setSearchTerm(value ? getOptionLabel(value) : "");
         setFocusedIndex(0);
         break;
 
@@ -204,52 +205,52 @@ const GenericSelect = forwardRef(function GenericSelect(
 
   const defaultContainerStyle = {
     opacity: disabled ? 0.6 : 1,
-    pointerEvents: disabled ? 'none' : 'auto',
+    pointerEvents: disabled ? "none" : "auto",
   };
 
   const defaultControlStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    cursor: 'text',
+    display: "flex",
+    alignItems: "center",
+    cursor: "text",
   };
 
   const defaultInputStyle = {
-    width: '100%',
-    padding: '0 3px',
-    outline: 'none',
-    border: 'none',
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#1d293d',
-    backgroundColor: 'transparent',
+    width: "100%",
+    padding: "0 3px",
+    outline: "none",
+    border: "none",
+    fontSize: "13px",
+    fontWeight: "600",
+    color: "#1d293d",
+    backgroundColor: "transparent",
   };
 
   const defaultMenuStyle = {
-    position: 'fixed',
-    top: '4px',
-    right: '4px',
-    bottom: '39px',
-    width: '280px',
-    overflowY: 'auto',
-    backgroundColor: '#def1fc',
-    border: '1px solid #45556c',
+    position: "fixed",
+    top: "4px",
+    right: "4px",
+    bottom: "39px",
+    width: "280px",
+    overflowY: "auto",
+    backgroundColor: "#def1fc",
+    border: "1px solid #45556c",
     zIndex: 100,
     padding: 0,
-    listStyle: 'none',
-    boxSizing: 'border-box',
+    listStyle: "none",
+    boxSizing: "border-box",
   };
 
   const defaultListStyle = {
-    padding: '1px 0 0 12px',
-    cursor: 'pointer',
-    fontSize: '12px',
-    whiteSpace: 'nowrap',
-    borderBottom: '1px solid #aacc',
-    transition: 'background-color 0.15s ease',
+    padding: "1px 0 0 12px",
+    cursor: "pointer",
+    fontSize: "12px",
+    whiteSpace: "nowrap",
+    borderBottom: "1px solid #aacc",
+    transition: "background-color 0.15s ease",
   };
 
   const defaultInputFocusStyle = {
-    color: '#020617',
+    color: "#020617",
   };
 
   return (
@@ -294,7 +295,9 @@ const GenericSelect = forwardRef(function GenericSelect(
           style={{
             ...defaultInputStyle,
             ...inputStyle,
-            ...(isOpen ? { ...defaultInputFocusStyle, ...inputFocusStyle } : {}),
+            ...(isOpen
+              ? { ...defaultInputFocusStyle, ...inputFocusStyle }
+              : {}),
           }}
         />
       </div>
@@ -316,9 +319,9 @@ const GenericSelect = forwardRef(function GenericSelect(
             {/* Header + Create button */}
             <div
               style={{
-                backgroundColor: '#f8fafc',
-                borderBottom: '1px dashed #ccc',
-                position: 'sticky',
+                backgroundColor: "#f8fafc",
+                borderBottom: "1px dashed #ccc",
+                position: "sticky",
                 top: 0,
                 zIndex: 10,
               }}
@@ -366,12 +369,12 @@ const GenericSelect = forwardRef(function GenericSelect(
                     onClick={() => handleSelect(option)}
                     style={{
                       backgroundColor: isSelected
-                        ? '#bfdbfe'
+                        ? "#bfdbfe"
                         : isFocused
-                          ? '#fef08a'
-                          : 'transparent',
-                      fontWeight: isSelected ? '600' : 'normal',
-                      color: isSelected ? '#075985' : '#334155',
+                          ? "#fef08a"
+                          : "transparent",
+                      fontWeight: isSelected ? "600" : "normal",
+                      color: isSelected ? "#075985" : "#334155",
                       ...defaultListStyle,
                       ...optionStyle,
                     }}
@@ -383,10 +386,10 @@ const GenericSelect = forwardRef(function GenericSelect(
             ) : (
               <li
                 style={{
-                  padding: '12px',
-                  color: '#94a3b8',
-                  fontSize: '12px',
-                  textAlign: 'center',
+                  padding: "12px",
+                  color: "#94a3b8",
+                  fontSize: "12px",
+                  textAlign: "center",
                 }}
               >
                 No results found
