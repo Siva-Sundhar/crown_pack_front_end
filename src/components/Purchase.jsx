@@ -390,7 +390,7 @@ const Purchase = () => {
 							{
 								// Inject "End of List" only if table has more than 1 row and not on row 0
 								const rowProductOptions =
-									purchaseItem.length > 1 && rowIndex > 0 ? [{ pa: '♦ End of List', value: '__END_OF_LIST__' }, ...productOptions] : productOptions;
+									purchaseItem.length > 1 && rowIndex > 0 ? [{ label: '♦ End of List', value: '__END_OF_LIST__' }, ...productOptions] : productOptions;
 								return(
 								<tr key={item.id} className="hover:bg-blue-50">
 									<td className="border border-slate-300 bg-slate-100 text-center font-bold text-slate-500">
