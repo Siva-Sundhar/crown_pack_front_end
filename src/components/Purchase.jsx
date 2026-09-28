@@ -15,12 +15,13 @@ import {
 } from 'lucide-react';
 import item from '../utils/item.js';
 import {
+	buildPurchasePayload,
 	calculateExpenses,
 	calculatePurchaseRow,
 	calculatePurchaseTotals,
 } from '../utils/purchase-calcultion.js';
 
-const emptyPurchaseRow = (gst = '') => ({
+const emptyPurchaseRow = (tax = '') => ({
 	id: Date.now() + Math.random(),
 	code: '',
 	desc: '',
@@ -28,7 +29,7 @@ const emptyPurchaseRow = (gst = '') => ({
 	uom: '',
 	rate: '',
 	disc: '',
-	gst,
+	tax,
 });
 
 const currencyFormatter = (value) => {
@@ -70,18 +71,19 @@ const Purchase = () => {
 	const [formData, setFormData] = useState({
 		voucherNo: 'PI/0001/26-27',
 		customerName: 'ABC Private Ltd',
+		voucherDate: toISODate(new Date()),
 		referenceNo: '',
 		referenceDate: '',
 		narration: '',
 		createdBy: '',
 		approvedBy: '',
-		vDate: toISODate(new Date()),
-		finalStatus: 'Pending',
-		transport: '',
-		transportGst: '',
-		taxMode: 'VAT',
-		taxType: 'intera',
+		voucherStatus: 'Pending',
+		taxMode: 'GST',
+		taxType: 'intra',
 		autoRound: true,
+		totalAmount: '',
+		totalQty: '',
+		units: '',
 	});
 	const taxMode = String(formData.taxMode || 'NONE').toUpperCase();
 	const taxType = String(formData.taxType || 'INTRA').toUpperCase();
@@ -163,11 +165,13 @@ const Purchase = () => {
 		const formattedDate = formatGenericDate(rawText, 'DD-MMM-YY');
 		if (!formattedDate) {
 			setDateInputText(
-				formData.vDate ? formatGenericDate(formData.vDate, 'DD-MMM-YY') : '',
+				formData.voucherDate
+					? formatGenericDate(formData.voucherDate, 'DD-MMM-YY')
+					: '',
 			);
 			return;
 		}
-		setFormData((prev) => ({ ...prev, vDate: toISODate(rawText) }));
+		setFormData((prev) => ({ ...prev, voucherDate: toISODate(rawText) }));
 		setDateInputText(formattedDate);
 	};
 
@@ -335,7 +339,7 @@ const Purchase = () => {
 		if (nextRow >= purchaseItem.length) {
 			setPurchaseItem((rows) => [
 				...rows,
-				emptyPurchaseRow(rows[rows.length - 1]?.gst ?? ''),
+				emptyPurchaseRow(rows[rows.length - 1]?.tax ?? ''),
 			]);
 			setTimeout(() => focusAndSelect(nextRow, nextCol), 0);
 			return;
@@ -399,8 +403,6 @@ const Purchase = () => {
 			expenses,
 			taxMode: formData.taxMode,
 			taxType: formData.taxType,
-			transport: formData.transport,
-			transportGst: formData.transportGst,
 			autoRound: formData.autoRound,
 		});
 	}, [
@@ -408,10 +410,11 @@ const Purchase = () => {
 		expenses,
 		formData.taxMode,
 		formData.taxType,
-		formData.transport,
-		formData.transportGst,
 		formData.autoRound,
 	]);
+
+	
+	
 
 	const productOptions = item.map((product) => ({
 		label: product.partNo,
@@ -471,6 +474,20 @@ const Purchase = () => {
 			{ taxable: 0, tax: 0, total: 0 },
 		);
 	}, [expenseItems]);
+
+	const handleSave = () =>{
+		const data = buildPurchasePayload({
+			 formData,
+			 purchaseItem,
+			 expenses,
+			 attachments}
+		);
+
+		console.log('Data - ',data);
+		
+	}
+
+
 	return (
 		<div className="h-dvh w-full overflow-hidden bg-slate-200 p-1 box-border">
 			<div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xs border border-black bg-white shadow-md">
@@ -534,13 +551,16 @@ const Purchase = () => {
 						</div>
 
 						<div className="flex items-center gap-1 sm:ml-auto">
-							<label htmlFor="vDate" className="font-semibold text-slate-700">
+							<label
+								htmlFor="voucherDate"
+								className="font-semibold text-slate-700"
+							>
 								Date
 							</label>
 							:
 							<input
 								ref={(el) => (headerRefs.current[3] = el)}
-								id="vDate"
+								id="voucherDate"
 								type="text"
 								value={dateInputText}
 								onChange={(e) => setDateInputText(e.target.value)}
@@ -560,7 +580,7 @@ const Purchase = () => {
 							<input
 								ref={hiddenDateRef}
 								type="date"
-								value={formData.vDate}
+								value={formData.voucherDate}
 								onChange={(e) => commitDateChange(e.target.value)}
 								className="pointer-events-none absolute sr-only"
 							/>
@@ -611,9 +631,9 @@ const Purchase = () => {
 							/>
 						</div>
 
-						{formData.vDate && (
+						{formData.voucherDate && (
 							<span className="ml-1 text-xs font-bold text-blue-800">
-								{getDayName(formData.vDate)}
+								{getDayName(formData.voucherDate)}
 							</span>
 						)}
 					</div>
@@ -840,13 +860,13 @@ const Purchase = () => {
 										<td className="border border-slate-300 bg-slate-50 ">
 											<div className="flex pr-1">
 												<input
-													{...cellHandlers(rowIndex, 'gst', 4)}
+													{...cellHandlers(rowIndex, 'tax', 4)}
 													type="text"
 													inputMode="decimal"
 													value={
-														isFocused(rowIndex, 'gst')
-															? item.gst
-															: formatPercent(item.gst)
+														isFocused(rowIndex, 'tax')
+															? item.tax
+															: formatPercent(item.tax)
 													}
 													placeholder="0.00"
 													className="w-full bg-transparent px-0.5 font-semibold text-slate-800 outline-none focus:bg-blue-100 text-right"
@@ -893,7 +913,7 @@ const Purchase = () => {
 
 				{/* ============ GST & SUMMARY ============ */}
 				{isLast && (
-					<section className="grid max-h-[45dvh] shrink-0 grid-cols-1 overflow-y-auto border-t border-slate-400 bg-[#f8f8f8] text-[12px] md:h-40 md:max-h-none md:grid-cols-[7fr_3fr] md:overflow-visible ">
+					<section className={`grid max-h-[45dvh] shrink-0 grid-cols-1 overflow-y-auto border-t border-slate-400 bg-[#f8f8f8] text-[12px] ${isIntra ? " md:h-44.5" : 'md:h-40'} md:max-h-none md:grid-cols-[7fr_3fr] md:overflow-visible `}>
 						{/* LEFT - GST Slabs */}
 						<div className="grid min-h-0 min-w-0 md:grid-rows-[minmax(0,3fr)_minmax(0,2fr)] md:border-r md:border-slate-300">
 							{/* Expenses table: fixed maximum five lines */}
@@ -1259,9 +1279,9 @@ const Purchase = () => {
 
 							<Line label="Discount" value={-totals.discount} />
 
-							<Line label="Add on & Others" value={totals.expenseAmount} />
-
 							<Line label="Taxable Value" value={totals.taxable} />
+
+							<Line label="Add on & Others" value={totals.expenseAmount} />
 
 							{formData.taxMode === 'VAT' && (
 								<Line label="VAT" value={totals.vat} />
@@ -1298,6 +1318,7 @@ const Purchase = () => {
 								</label>
 
 								<span>
+									
 									{totals.roundOff > 0 ? '+' : ''}
 									{formatCurrency(totals.roundOff)}
 								</span>
@@ -1410,6 +1431,7 @@ const Purchase = () => {
 							<button
 								type="button"
 								className="rounded bg-[#2167d5] px-5 font-bold text-white shadow hover:bg-[#1553b5]"
+								onClick={handleSave}
 							>
 								Save
 							</button>
