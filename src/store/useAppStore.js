@@ -1,55 +1,71 @@
 import { create } from "zustand";
+import {
+  persist,
+  createJSONStorage,
+} from "zustand/middleware";
 
 const initialState = {
-    token: null,
-    username: null,
+  token: null,
+  username: null,
 
-    customers: [],
-    items: [],
-    purchases: [],
-    dayBooks: [],
+  customers: [],
+  items: [],
+  purchases: [],
 
-    loading: false,
-    error: null,
+  loading: false,
+  error: null,
 };
 
-export const useAppStore = create((set) => ({
-    ...initialState,
+export const useAppStore = create(
+  persist(
+    (set) => ({
+      ...initialState,
 
-    login: (token, username) => {
+      login: (token, username) => {
         set({
-            token,
-            username,
+          token,
+          username,
+          error: null,
         });
-    },
+      },
 
-    logout: () => {
+      logout: () => {
         set({
-            ...initialState,
+          ...initialState,
         });
-    },
+      },
 
-    setCustomers: (customers) => {
+      setCustomers: (customers) => {
         set({ customers });
-    },
+      },
 
-    setItems: (items) => {
+      setItems: (items) => {
         set({ items });
-    },
+      },
 
-    setPurchases: (purchases) => {
+      setPurchases: (purchases) => {
         set({ purchases });
-    },
+      },
 
-    setDayBooks: (dayBooks) => {
-        set({ dayBooks });
-    },
-
-    setLoading: (loading) => {
+      setLoading: (loading) => {
         set({ loading });
-    },
+      },
 
-    setError: (error) => {
+      setError: (error) => {
         set({ error });
-    },
-}));
+      },
+    }),
+    {
+      name: "app-auth-storage",
+
+      // Use sessionStorage instead of localStorage
+      storage: createJSONStorage(() => sessionStorage),
+
+      // Store only authentication information
+      partialize: (state) => ({
+        token: state.token,
+        username: state.username,
+      }),
+    }
+  )
+);
