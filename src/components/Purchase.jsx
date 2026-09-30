@@ -483,7 +483,14 @@ const Purchase = () => {
 			 attachments}
 		);
 
-		console.log('Data - ',data);
+		// const formDataObj = new FormData();
+
+		// formDataObj.append(
+		// 	'voucher',
+		// 	new Blob([JSON.stringify])
+		// )
+
+		console.log(data)
 		
 	}
 
