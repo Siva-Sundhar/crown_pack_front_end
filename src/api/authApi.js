@@ -8,20 +8,20 @@ export const loginWithPassword = async (email, password) => {
             password,
         }
     );
-
     return response.data;
 };
 
 export const verifyOtp = async (email, otp) => {
-    const response = await api.post(
-        "/api/auth/authentication/verify-otp",
-        {
-            email,
-            otp,
+    return await api.post(
+        "/api/auth/authorization/otpverify",
+        null, {
+            params: {
+                email,
+                code: otp,
+            }
+
         }
     );
-
-    return response.data;
 };
 
 export const resendOtp = async (email) => {

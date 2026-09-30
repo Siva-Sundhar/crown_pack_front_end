@@ -20,6 +20,7 @@ import {
 	calculatePurchaseRow,
 	calculatePurchaseTotals,
 } from '../utils/purchase-calcultion.js';
+import {createPurchase} from "../api/purchaseApi.js";
 
 const emptyPurchaseRow = (tax = '') => ({
 	id: Date.now() + Math.random(),
@@ -78,7 +79,7 @@ const Purchase = () => {
 		createdBy: '',
 		approvedBy: '',
 		voucherStatus: 'Pending',
-		taxMode: 'GST',
+		taxMode: 'VAT',
 		taxType: 'intra',
 		autoRound: true,
 		totalAmount: '',
@@ -131,7 +132,7 @@ const Purchase = () => {
 		1: 'qty',
 		2: 'rate',
 		3: 'disc',
-		4: 'gst',
+		4: 'tax',
 	};
 	const EXPENSE_FIELDS = ['particular', 'amount', 'tax'];
 
@@ -139,6 +140,9 @@ const Purchase = () => {
 
 	const [dateInputText, setDateInputText] = useState(
 		formatGenericDate(new Date(), 'DD-MMM-YY'),
+	);
+	const [refDateInputText, setRefDateInputText] = useState(''
+
 	);
 	const fileInputRef = useRef(null);
 	const [attachments, setAttachments] = useState([]);
@@ -161,7 +165,7 @@ const Purchase = () => {
 	const setField = (name) => (e) =>
 		setFormData((prev) => ({ ...prev, [name]: e.target.value }));
 
-	const commitDateChange = (rawText) => {
+	const commitDateChange = (rawText, field) => {
 		const formattedDate = formatGenericDate(rawText, 'DD-MMM-YY');
 		if (!formattedDate) {
 			setDateInputText(
@@ -171,8 +175,11 @@ const Purchase = () => {
 			);
 			return;
 		}
-		setFormData((prev) => ({ ...prev, voucherDate: toISODate(rawText) }));
-		setDateInputText(formattedDate);
+		setFormData((prev) => ({ ...prev, [field]: toISODate(rawText) }));
+		if( field === 'voucherDate')
+			setDateInputText(formattedDate);
+		if( field === 'referenceDate')
+			setRefDateInputText(formattedDate);
 	};
 
 	const handleHeaderKeyDown = (event, nextElement) => {
@@ -271,7 +278,7 @@ const Purchase = () => {
 		}, 0);
 	};
 
-	/* Helper for Conver format */
+	/* Helper for Convert format */
 	// For amounts (rate, total) — comma grouped
 	const formatCurrency = (value) => {
 		const num = parseFloat(value);
@@ -480,24 +487,20 @@ const Purchase = () => {
 			formData,
 			purchaseItem,
 			expenses,
-			attachments,
+
 		});
 
-		const multipartData = new FormData();
+		try{
 
-		multipartData.append(
-			"voucherData",
-			new Blob(
-				[JSON.stringify(voucherData)],
-				{ type: "application/json" }
-			)
-		);
+			const savedPurchase = await createPurchase(voucherData, attachments);
 
-		attachments.forEach((file) => {
-			multipartData.append("attachments", file);
-		});
+			console.log('', savedPurchase);
 
-		await api.post("/api/purchases", multipartData);
+		} catch (error) {
+			console.error("Purchase save failed:", error);
+		}
+
+
 	};
 
 
@@ -556,8 +559,9 @@ const Purchase = () => {
 							<input
 								ref={(el) => (headerRefs.current[2] = el)}
 								id="referenceDate"
-								value={formData.referenceDate}
-								onChange={setField('referenceDate')}
+								value={refDateInputText}
+								onChange={(e) => setRefDateInputText(e.target.value)}
+								onBlur={() => commitDateChange(dateInputText, 'referenceDate')}
 								onKeyDown={(e) => handleHeaderKeyDown(e, headerRefs.current[3])}
 								className={`${headerInput} w-20 text-right`}
 							/>
@@ -576,8 +580,8 @@ const Purchase = () => {
 								id="voucherDate"
 								type="text"
 								value={dateInputText}
-								onChange={(e) => setDateInputText(e.target.value)}
-								onBlur={() => commitDateChange(dateInputText)}
+								onChange={(e) => setDateInputText(e.target.value,)}
+								onBlur={() => commitDateChange(dateInputText, 'voucherDate')}
 								onKeyDown={(e) => handleHeaderKeyDown(e, headerRefs.current[4])}
 								className={`${headerInput} w-22 text-right`}
 							/>
@@ -594,7 +598,7 @@ const Purchase = () => {
 								ref={hiddenDateRef}
 								type="date"
 								value={formData.voucherDate}
-								onChange={(e) => commitDateChange(e.target.value)}
+								onChange={(e) => commitDateChange(e.target.value, 'voucherDate')}
 								className="pointer-events-none absolute sr-only"
 							/>
 						</div>

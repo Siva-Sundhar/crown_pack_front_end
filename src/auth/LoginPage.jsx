@@ -1,27 +1,21 @@
 import {useState} from 'react';
-import {
-    AlertCircle,
-    ArrowRight,
-    CheckCircle,
-    Eye,
-    EyeOff,
-    Lock,
-    Package,
-    ShoppingBag,
-    User,
-} from 'lucide-react';
+import {AlertCircle, ArrowRight, CheckCircle, Eye, EyeOff, Lock, Package, ShoppingBag, User,} from 'lucide-react';
 
-// import {useNavigate} from "react-router-dom";
+import {useNavigate} from "react-router-dom";
 import {loginWithPassword, resendOtp, verifyOtp} from "../api/authApi.js";
 import {useAppStore} from "../store/useAppStore.js";
 
 const LoginPage = () => {
-    // const navigate = useNavigate();
+
+    const login = useAppStore((state) => state.login);
+    const token = useAppStore((s)=> s.token);
+
+    const navigate = useNavigate();
     const [credentials, setCredentials] = useState({
         username: "", password: ""
     });
     const [showPassword, setShowPassword] = useState(false);
-    const [loginStep, setLoginStep] = useState("otp");
+    const [loginStep, setLoginStep] = useState("credentials");
     const [otp, setOtp] = useState("");
 
     const [loading, setLoading] = useState(false);
@@ -31,36 +25,6 @@ const LoginPage = () => {
         setCredentials((previous) => ({...previous, [name]: value}));
         if (error) setError('');
     };
-
-    // const handleLogin = async (event) => {
-    // 	event.preventDefault();
-    // 	const username = credentials.username.trim();
-    // 	const password = credentials.password.trim();
-    //
-    // 	if (!username || !password) {
-    // 		setError('Please enter your username and password.');
-    // 		return;
-    // 	}
-    //
-    // 	setLoading(true);
-    //
-    // 	try {
-    //
-    // 		const response = api.post('/api/auth/authentication/login', {username, password});
-    //
-    // 		console.log(response);
-    //
-    //
-    // 		sessionStorage.setItem('user_token', '');
-    // 		sessionStorage.setItem('po_username', username);
-    //
-    //
-    // 	} catch {
-    // 		setError('Invalid credentials. Please try again.');
-    // 	} finally {
-    // 		setLoading(false);
-    // 	}
-    // };
 
     const handleLogin = async (event) => {
         event.preventDefault();
@@ -112,16 +76,29 @@ const LoginPage = () => {
         setError("");
 
         try {
-            const data = await verifyOtp(email, cleanOtp);
+            const response = await verifyOtp(email, cleanOtp);
 
-            if (!data.token) throw new Error("JWT token was not returned by the server.");
+            const authHeader = response.headers.getAuthorization();
 
-            useAppStore.getState().login(
-                data.token,
-                data.username ?? email
-            );
+            if (authHeader.startsWith('Bearer ')) {
+                const token = authHeader.substring(7);
 
-            // navigate("/dashboard");
+                login(
+                    token,
+                    response.data.email ?? email
+                );
+            }
+
+            
+            if (!token)
+                throw new Error("JWT token was not returned by the server.");
+
+            const redirectPath =
+                location.state?.from?.pathname || "/dashboard";
+
+            navigate(redirectPath, {
+                replace: true,
+            });
         } catch (error) {
             console.error("OTP verification error:", error);
 
@@ -360,7 +337,8 @@ const LoginPage = () => {
                                 </div>
 
                                 <div>
-                                    <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                                    <label
+                                        className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1">
                                         OTP
                                     </label>
 
