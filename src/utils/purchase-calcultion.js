@@ -281,18 +281,18 @@ export const buildPurchasePayload = ({
 
 		return {
 			lineNo: index + 1,
-			productCode: row.code,
-			description: row.desc,
-			quantity: num(row.qty),
+			itemCode: row.code,
+			itemName: row.desc,
+			qty: num(row.qty),
 			uom: row.uom,
 			rate: num(row.rate),
-			discountPercent: num(row.disc),
+			disc: num(row.disc),
 			discountAmount: calculated.discountAmount,
-			taxRate: calculated.taxRate,
+			gst: calculated.taxRate,
 			grossAmount: calculated.gross,
 			taxableAmount: calculated.taxable,
 			taxAmount: calculated.taxAmount,
-			amount: calculated.amount,
+			itenAmount: calculated.amount,
 		};
 	});
 
@@ -345,16 +345,16 @@ export const buildPurchasePayload = ({
 	}
 
 	return {
-		voucherNo: String(formData.voucherNo || '').trim(),
-		voucherDate: formData.voucherDate || null,
-		customerName: String(formData.customerName || '').trim(),
-		referenceNo: String(formData.referenceNo || '').trim(),
-		referenceDate: formData.referenceDate || null,
+		vchNo: String(formData.voucherNo || '').trim(),
+		vchDate: formData.voucherDate || null,
+		supplierName: String(formData.customerName || '').trim(),
+		poNo: String(formData.referenceNo || '').trim(),
+		poDate: formData.referenceDate || null,
 		narration: String(formData.narration || '').trim(),
 		createdBy: String(formData.createdBy || '').trim(),
 		approvedBy: String(formData.approvedBy || '').trim(),
 		voucherStatus: formData.voucherStatus,
-		totalAmount: num(totals.netTotal) || 0,
+		voucherAmount: num(totals.netTotal) || 0,
     totalQty: totals.quantity,
     units: 'mixed',
 

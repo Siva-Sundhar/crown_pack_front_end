@@ -475,24 +475,30 @@ const Purchase = () => {
 		);
 	}, [expenseItems]);
 
-	const handleSave = () =>{
-		const data = buildPurchasePayload({
-			 formData,
-			 purchaseItem,
-			 expenses,
-			 attachments}
+	const handleSave = async () => {
+		const voucherData = buildPurchasePayload({
+			formData,
+			purchaseItem,
+			expenses,
+			attachments,
+		});
+
+		const multipartData = new FormData();
+
+		multipartData.append(
+			"voucherData",
+			new Blob(
+				[JSON.stringify(voucherData)],
+				{ type: "application/json" }
+			)
 		);
 
-		// const formDataObj = new FormData();
+		attachments.forEach((file) => {
+			multipartData.append("attachments", file);
+		});
 
-		// formDataObj.append(
-		// 	'voucher',
-		// 	new Blob([JSON.stringify])
-		// )
-
-		console.log(data)
-		
-	}
+		await api.post("/api/purchases", multipartData);
+	};
 
 
 	return (
