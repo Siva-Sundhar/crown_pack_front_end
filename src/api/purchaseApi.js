@@ -38,18 +38,31 @@ export const createPurchase = async (voucherData, attachments = []) => {
 export const getPurchases = async (supplier) => {
 
 
-	const response = await api.post('/api/auth/purchase/daybook/request', supplier);
-
-
-    console.log(response);
+	const response = await api.post('/api/auth/purchase/daybook/request', supplier);  
     
 	return response.data;
 };
 
 export const getPurchaseById = async (id) => {
-	const response = await api.get(`/api/auth/webrequest/purchase/${id}`);
+	const response = await api.get(`/api/auth/webrequest/purchase/${id}`,
+		{responseType: 'blob'}
+	);
 
-	return response.data;
+	const contentType = response.headers["content-type"];
+
+  const fd = await new Response(response.data, {
+    headers: { "Content-Type": contentType },
+  }).formData();
+
+  const voucher = JSON.parse(fd.get("voucher"));   // string -> object
+  const files = fd.getAll("files");  
+
+  console.log("Fetched purchase data:", { voucher, files });
+
+  return { voucher, files };
+
+
+	
 };
 
 export const updatePurchase = async ({ id, voucherData, attachments = [] }) => {

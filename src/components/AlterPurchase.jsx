@@ -125,13 +125,13 @@ const normalizePurchaseItem = (row, index) => ({
 const normalizeExpense = (expense, index) => ({
   id: firstValue(expense.id, expense.expenseId, `existing-expense-${index}`),
 
-  particular: firstValue(expense.particular, expense.name, expense.description),
+  particular: firstValue(expense.particular, expense.name, expense.description, expense.ledgerName),
 
-  amount: firstValue(expense.amount, expense.rate),
+  amount: firstValue(expense.amount, expense.rate, expense.ledgerAmount),
 
-  tax: firstValue(expense.tax, expense.taxRate),
+  tax: firstValue(expense.tax, expense.taxRate, expense.percentage),
 
-  totalAmount: firstValue(expense.totalAmount, expense.total),
+  totalAmount: firstValue(expense.totalAmount, expense.total, expense.ledgerAmount),
 });
 
 const currencyFormatter = (value) => {
@@ -285,9 +285,9 @@ const AlterPurchase = ({ purchaseId }) => {
           return;
         }
 
-        const purchase = response?.data || response;
+        const { voucher: purchase, files } = response?.data || response;
 
-        console.log(purchase);
+        
         
 
         const voucherDate = normalizeDate(
@@ -295,7 +295,7 @@ const AlterPurchase = ({ purchaseId }) => {
         );
 
         const referenceDate = normalizeDate(
-          firstValue(purchase.referenceDate, purchase.refDate),
+          firstValue(purchase.referenceDate, purchase.refDate, purchase.poDate),
         );
 
         setFormData((previous) => ({
@@ -320,6 +320,7 @@ const AlterPurchase = ({ purchaseId }) => {
           referenceNo: firstValue(
             purchase.referenceNo,
             purchase.referenceNumber,
+            purchase.poNo
           ),
 
           referenceDate,
@@ -364,7 +365,7 @@ const AlterPurchase = ({ purchaseId }) => {
         const serverItems =
           purchase.items ||
           purchase.purchaseItems ||
-          purchase.purchaseDetails ||
+          purchase.requestInventory ||
           purchase.lines ||
           [];
 
@@ -376,7 +377,7 @@ const AlterPurchase = ({ purchaseId }) => {
 
         const serverExpenses =
           purchase.expenses ||
-          purchase.purchaseExpenses ||
+          purchase.requestLedgerEntry ||
           purchase.addOnCosts ||
           [];
 
