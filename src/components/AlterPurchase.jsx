@@ -101,7 +101,7 @@ const normalizeDate = (value) => {
 const normalizePurchaseItem = (row, index) => ({
   id: firstValue(row.id, row.itemId, `existing-item-${index}`),
 
-  code: firstValue(row.code, row.productCode, row.partNo, row.product?.partNo),
+  code: firstValue(row.code, row.productCode, row.itemCode, row.product?.partNo),
 
   desc: firstValue(
     row.desc,

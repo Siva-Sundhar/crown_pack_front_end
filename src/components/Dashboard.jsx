@@ -1,121 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { getPurchases } from "../api/purchaseApi";
 import { Link, useNavigate } from "react-router-dom";
 import { formatGenericDate } from "../utils/FormatGenericDate";
 
-/* ---------- sample data (replace with your API data via the `vouchers` prop) ---------- */
-const SAMPLE = [
-  {
-    id: 1,
-    date: "2026-09-01",
-    party: "Sri Murugan Traders",
-    voucherNo: "PUR/26-27/0141",
-    type: "Purchase",
-    amount: 48250.0,
-    status: "Approved",
-  },
-  {
-    id: 2,
-    date: "2026-09-02",
-    party: "Kaveri Agencies",
-    voucherNo: "PUR/26-27/0142",
-    type: "Purchase",
-    amount: 12980.5,
-    status: "Pending",
-  },
-  {
-    id: 3,
-    date: "2026-09-04",
-    party: "Annapoorna Wholesale",
-    voucherNo: "PUR/26-27/0143",
-    type: "Purchase",
-    amount: 76400.0,
-    status: "Approved",
-  },
-  {
-    id: 4,
-    date: "2026-09-06",
-    party: "Balaji Electricals",
-    voucherNo: "PRT/26-27/0021",
-    type: "Purchase",
-    amount: 5320.0,
-    status: "Approved",
-  },
-  {
-    id: 5,
-    date: "2026-09-09",
-    party: "Vellore Steel Mart",
-    voucherNo: "PUR/26-27/0144",
-    type: "Purchase",
-    amount: 154900.75,
-    status: "Pending",
-  },
-  {
-    id: 6,
-    date: "2026-09-12",
-    party: "Global Packaging Co.",
-    voucherNo: "IMP/26-27/0008",
-    type: "Purchase",
-    amount: 231000.0,
-    status: "Pending",
-  },
-  {
-    id: 7,
-    date: "2026-09-15",
-    party: "Lakshmi Hardware",
-    voucherNo: "PUR/26-27/0145",
-    type: "Purchase",
-    amount: 9875.0,
-    status: "Approved",
-  },
-  {
-    id: 8,
-    date: "2026-09-18",
-    party: "Sri Murugan Traders",
-    voucherNo: "PUR/26-27/0146",
-    type: "Purchase",
-    amount: 33210.0,
-    status: "Approved",
-  },
-  {
-    id: 9,
-    date: "2026-09-22",
-    party: "Kaveri Agencies",
-    voucherNo: "PRT/26-27/0022",
-    type: "Purchase",
-    amount: 2450.0,
-    status: "Pending",
-  },
-  {
-    id: 10,
-    date: "2026-09-26",
-    party: "Annapoorna Wholesale",
-    voucherNo: "PUR/26-27/0147",
-    type: "Purchase",
-    amount: 68120.25,
-    status: "Pending",
-  },
-  {
-    id: 11,
-    date: "2026-09-29",
-    party: "Balaji Electricals",
-    voucherNo: "PUR/26-27/0148",
-    type: "Purchase",
-    amount: 18640.0,
-    status: "Approved",
-  },
-];
-
-/* ---------- helpers ---------- */
-const inr = new Intl.NumberFormat("en-IN", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-const fmtDate = (iso) => {
-  const [y, m, d] = iso.split("-");
-  return `${d}-${m}-${y}`;
-};
 const toISO = (d) =>
   new Date(d.getTime() - d.getTimezoneOffset() * 60000)
     .toISOString()
@@ -124,12 +12,16 @@ const toISO = (d) =>
 const STATUS_TABS = ["All", "Pending", "Approved"];
 
 const STATUS_STYLE = {
-  Approved: {
+  approved: {
     dot: "bg-emerald-500",
     text: "text-emerald-700",
     bg: "bg-emerald-50",
   },
-  Pending: { dot: "bg-amber-500", text: "text-amber-700", bg: "bg-amber-50" },
+  pending: {
+    dot: "bg-amber-500",
+    text: "text-amber-700",
+    bg: "bg-amber-50",
+  },
 };
 
 function StatusBadge({ status }) {
@@ -138,108 +30,293 @@ function StatusBadge({ status }) {
     text: "text-neutral-600",
     bg: "bg-neutral-100",
   };
+
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-1.5  text-xs font-medium ${s.text}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-1.5 py-0.5 text-xs font-medium ${s.text} ${s.bg}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-      {status}
+      {status.toUpperCase()}
     </span>
   );
 }
 
-/* ---------- component ---------- */
-const Dashboard = ({ vouchers = SAMPLE, onRowClick }) => {
-
-	const navigate = useNavigate();
+const Dashboard = () => {
+  const navigate = useNavigate();
 
   const today = new Date();
+
   const [from, setFrom] = useState(
-    toISO(new Date(today.getFullYear(), today.getMonth(), 1)),
+    toISO(new Date(today.getFullYear(), today.getMonth(), 1))
   );
+
   const [to, setTo] = useState(toISO(today));
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
-  const username = useAppStore((s) => s.username);
+
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  const profileRef = useRef(null);
 
   const purchases = useAppStore((state) => state.purchases);
   const setPurchases = useAppStore((state) => state.setPurchases);
   const setLoading = useAppStore((state) => state.setLoading);
   const setError = useAppStore((state) => state.setError);
 
-  // date range + search first, so the tab counts reflect what you'd see under each tab
-  const base = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return vouchers.filter((v) => {
-      if (from && v.date < from) return false;
-      if (to && v.date > to) return false;
-      if (!q) return true;
-      return (
-        v.party.toLowerCase().includes(q) ||
-        v.voucherNo.toLowerCase().includes(q) ||
-        v.type.toLowerCase().includes(q)
-      );
-    });
-  }, [vouchers, from, to, query]);
+  const supplier = useAppStore((state) => state.ledgerName);
 
-  const counts = useMemo(
-    () => ({
-      All: base.length,
-      Pending: base.filter((v) => v.status === "Pending").length,
-      Approved: base.filter((v) => v.status === "Approved").length,
-    }),
-    [base],
-  );
-
-  const rows = useMemo(
-    () => (status === "All" ? base : base.filter((v) => v.status === status)),
-    [base, status],
-  );
-
-  const total = useMemo(
-    () => rows.reduce((sum, v) => sum + v.amount, 0),
-    [rows],
-  );
-
-  const inputCls =
-    "h-6 rounded-md border border-red-200 bg-white px-2.5 text-sm text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-red-400 focus:ring-1 focus:ring-red-300";
-
+  /*
+   * Close profile dropdown when clicking outside
+   */
   useEffect(() => {
-    if (!username) return;
+    const handleClickOutside = (event) => {
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(event.target)
+      ) {
+        setProfileOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  /*
+   * Fetch purchases
+   */
+  useEffect(() => {
+    if (!supplier) return;
+
     let ignore = false;
 
     setLoading(true);
     setError(null);
 
-    getPurchases({ supplier: "ABC Private Ltd", fromDate: from, toDate: to })
+    getPurchases({
+      supplier,
+      fromDate: from,
+      toDate: to,
+    })
       .then((data) => {
-        if (!ignore) setPurchases(data);
+        if (!ignore) {
+          setPurchases(Array.isArray(data) ? data : []);
+        }
       })
       .catch((err) => {
-        if (!ignore) setError(err.response?.data?.message || err.message);
+        if (!ignore) {
+          setError(
+            err.response?.data?.message ||
+              err.message ||
+              "Failed to fetch purchases"
+          );
+        }
       })
       .finally(() => {
-        if (!ignore) setLoading(false);
+        if (!ignore) {
+          setLoading(false);
+        }
       });
 
     return () => {
-      ignore = true; // response from an old range is thrown away
+      ignore = true;
     };
-  }, [username, from, to]);
+  }, [supplier, from, to, setPurchases, setLoading, setError]);
 
-  console.log(purchases);
+  /*
+   * Filter by date + search
+   *
+   * Your table uses:
+   * vchDate
+   * supplier
+   * vchNo
+   * refNo
+   * voucherStatus
+   *
+   * So filtering should use those same fields.
+   */
+  const base = useMemo(() => {
+    const q = query.trim().toLowerCase();
+
+    return purchases.filter((v) => {
+      const voucherDate = v.vchDate
+        ? toISO(new Date(v.vchDate))
+        : "";
+
+      // Date filter
+      if (from && voucherDate && voucherDate < from) {
+        return false;
+      }
+
+      if (to && voucherDate && voucherDate > to) {
+        return false;
+      }
+
+      // Search filter
+      if (!q) return true;
+
+      return (
+        String(v.supplier || "").toLowerCase().includes(q) ||
+        String(v.vchNo || "").toLowerCase().includes(q) ||
+        String(v.refNo || "").toLowerCase().includes(q) ||
+        String(v.voucherStatus || "").toLowerCase().includes(q)
+      );
+    });
+  }, [purchases, from, to, query]);
+
+  /*
+   * Status counts
+   */
+  const counts = useMemo(
+    () => ({
+      All: base.length,
+      Pending: base.filter(
+        (v) => v.voucherStatus.toLowerCase() === "pending"
+      ).length,
+      Approved: base.filter(
+        (v) => v.voucherStatus.toLowerCase() === "approved"
+      ).length,
+    }),
+    [base]
+  );
+
+  /*
+   * Final rows displayed in table
+   */
+  const rows = useMemo(() => {
+    if (status === "All") {
+      return base;
+    }
+
+    return base.filter(
+      (v) => v.voucherStatus.toLowerCase() === status.toLowerCase()
+    );
+  }, [base, status]);
+
+  /*
+   * Total should use the SAME rows displayed in table
+   */
+  const total = useMemo(() => {
+    return rows.reduce(
+      (sum, v) => sum + Number(v.voucherAmount || 0),
+      0
+    );
+  }, [rows]);
+
+  /*
+   * Logout
+   *
+   * Change the localStorage key if your application
+   * uses a different authentication token key.
+   */
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("accessToken");
+
+    setProfileOpen(false);
+
+    navigate("/login");
+  };
+
+  const inputCls =
+    "h-7 rounded-md border border-red-200 bg-white px-2.5 text-sm text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-red-400 focus:ring-1 focus:ring-red-300";
 
   return (
     <div className="flex h-screen flex-col bg-neutral-50 text-neutral-800">
-      {/* Header + filters */}
+      {/* ================= HEADER ================= */}
       <header className="border-b border-neutral-200 bg-white px-4 py-3 sm:px-6">
-        <div className="mb-3 flex items-baseline justify-between">
-          <h1 className="text-lg font-semibold tracking-tight">Purchase</h1>
-          <span className="text-xs text-neutral-500">
-            {rows.length} {rows.length === 1 ? "voucher" : "vouchers"}
-          </span>
+        {/* Top title + profile */}
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">
+              Purchase
+            </h1>
+
+            <p className="text-xs text-neutral-500">
+              {supplier || "Purchase Dashboard"}
+            </p>
+          </div>
+
+          {/* Profile */}
+          <div className="relative" ref={profileRef}>
+            <button
+              type="button"
+              onClick={() => setProfileOpen((prev) => !prev)}
+              className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-sm transition hover:bg-neutral-50"
+            >
+              {/* Avatar */}
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#DC143C] text-xs font-semibold text-white">
+                {supplier
+                  ? supplier.charAt(0).toUpperCase()
+                  : "U"}
+              </span>
+
+              <span className="hidden max-w-32 truncate text-sm font-medium sm:block">
+                {supplier || "Profile"}
+              </span>
+
+              <svg
+                className={`h-4 w-4 text-neutral-500 transition-transform ${
+                  profileOpen ? "rotate-180" : ""
+                }`}
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path
+                  d="m5 7.5 5 5 5-5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+
+            {/* Dropdown */}
+            {profileOpen && (
+              <div className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg">
+                <div className="border-b border-neutral-100 px-4 py-3">
+                  <p className="text-sm font-semibold text-neutral-800">
+                    {supplier || "User"}
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-neutral-500">
+                    Profile
+                  </p>
+                </div>
+
+                <div className="p-1.5">
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M10 17l5-5-5-5" />
+                      <path d="M15 12H3" />
+                      <path d="M21 19V5a2 2 0 0 0-2-2h-6" />
+                    </svg>
+
+                    Logout
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
+        {/* Filters */}
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             {/* Date range */}
@@ -252,7 +329,11 @@ const Dashboard = ({ vouchers = SAMPLE, onRowClick }) => {
                 className={`${inputCls} w-full sm:w-36`}
                 aria-label="From date"
               />
-              <span className="text-xs text-neutral-400">to</span>
+
+              <span className="text-xs text-neutral-400">
+                to
+              </span>
+
               <input
                 type="date"
                 value={to}
@@ -276,13 +357,17 @@ const Dashboard = ({ vouchers = SAMPLE, onRowClick }) => {
                 <circle cx="9" cy="9" r="5.5" />
                 <path d="M13.5 13.5 17 17" />
               </svg>
+
               <input
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search party, voucher no."
+                onChange={(e) =>
+                  setQuery(e.target.value)
+                }
+                placeholder="Search supplier, voucher no."
                 className={`${inputCls} w-full pl-8 pr-7`}
               />
+
               {query && (
                 <button
                   type="button"
@@ -293,6 +378,7 @@ const Dashboard = ({ vouchers = SAMPLE, onRowClick }) => {
                   <svg
                     className="h-3.5 w-3.5"
                     viewBox="0 0 20 20"
+                    fill="none"
                     stroke="currentColor"
                     strokeWidth="1.8"
                     strokeLinecap="round"
@@ -303,35 +389,45 @@ const Dashboard = ({ vouchers = SAMPLE, onRowClick }) => {
               )}
             </div>
           </div>
+
+          {/* Create Purchase */}
           <Link
-            to={"/purchase"}
-            className={`h-6 rounded-md border border-emerald-200  text-sm font-semibold outline-none transition placeholder:text-neutral-400 px-3 bg-emerald-400 ml-auto text-white`}
+            to="/purchase"
+            className="flex h-7 items-center justify-center rounded-md bg-emerald-500 px-3 text-sm font-semibold text-white transition hover:bg-emerald-600 lg:ml-auto"
           >
             + Create Purchase
           </Link>
-          {/* Status segmented control */}
+
+          {/* Status tabs */}
           <div
             role="tablist"
             aria-label="Status"
             className="inline-flex self-start rounded-lg bg-neutral-100 p-0.5"
           >
             {STATUS_TABS.map((t) => {
-              const active = status === t;
+              const active = status === t.toLowerCase();
+
               return (
                 <button
                   key={t}
+                  type="button"
                   role="tab"
                   aria-selected={active}
                   onClick={() => setStatus(t)}
-                  className={`flex h-6 items-center gap-1.5 rounded-md px-3 text-sm transition ${
+                  className={`flex h-7 items-center gap-1.5 rounded-md px-3 text-sm transition ${
                     active
                       ? "bg-white font-medium text-neutral-900 shadow-sm"
                       : "text-neutral-500 hover:text-neutral-800"
                   }`}
                 >
                   {t}
+
                   <span
-                    className={`text-xs tabular-nums ${active ? "text-neutral-500" : "text-neutral-400"}`}
+                    className={`text-xs tabular-nums ${
+                      active
+                        ? "text-neutral-500"
+                        : "text-neutral-400"
+                    }`}
                   >
                     {counts[t]}
                   </span>
@@ -342,80 +438,135 @@ const Dashboard = ({ vouchers = SAMPLE, onRowClick }) => {
         </div>
       </header>
 
-      {/* Table */}
+      {/* ================= TABLE ================= */}
       <main className="min-h-0 flex-1 py-1 sm:px-2">
         <div className="flex h-full flex-col overflow-hidden rounded border border-red-200 bg-white">
           <div className="min-h-0 flex-1 overflow-auto">
-            <table className="w-full min-w-195 border-collapse text-[12px]">
+            <table className="w-full min-w-[1000px] border-collapse text-[12px]">
               <thead className="sticky top-0 z-10 bg-[#DC143C]">
                 <tr className="border-b border-red-200 text-left text-xs font-medium text-white">
-                  <th className="w-14 px-4 py-1">S.No</th>
-                  <th className="w-28 px-4 py-1">Date</th>
-                  <th className="px-4 py-1">Supplier name</th>
-                  <th className="px-4 py-1">Voucher no.</th>
-                  <th className="px-4 py-1">Reference No</th>
-                  <th className="px-4 py-1">Reference Date</th>
-                  <th className="w-32 px-4 py-1">Status</th>
-                  <th className="px-4 py-1 text-right">Amount (₹)</th>
+                  <th className="w-14 px-4 py-1">
+                    S.No
+                  </th>
+
+                  <th className="w-28 px-4 py-1">
+                    Date
+                  </th>
+
+                  <th className="px-4 py-1">
+                    Supplier name
+                  </th>
+
+                  <th className="px-4 py-1">
+                    Voucher no.
+                  </th>
+
+                  <th className="px-4 py-1">
+                    Reference No
+                  </th>
+
+                  <th className="px-4 py-1">
+                    Reference Date
+                  </th>
+
+                  <th className="w-32 px-4 py-1">
+                    Status
+                  </th>
+
+                  <th className="px-4 py-1 text-right">
+                    Amount (₹)
+                  </th>
                 </tr>
               </thead>
+
               <tbody>
-                {purchases.map((v, i) => (
+                {rows.map((v, i) => (
                   <tr
                     key={v.id}
-                    onClick={() => navigate(`/purchase/alter/${v.id}`)}
-                    className={`border-b border-red-200 transition-colors hover:bg-neutral-100 ${
-                      onRowClick ? "cursor-pointer" : ""
-                    }`}
+                    onClick={() =>
+                      navigate(`/purchase/alter/${v.id}`)
+                    }
+                    className="cursor-pointer border-b border-red-200 transition-colors hover:bg-neutral-100"
                   >
-                    <td className="first:border-0 border border-red-200 px-4 py-0 tabular-nums text-neutral-400">
+                    <td className="border border-red-200 px-4 py-0 text-center tabular-nums text-neutral-400">
                       {i + 1}
                     </td>
+
                     <td className="border border-red-200 px-4 py-0 tabular-nums text-neutral-600">
-                      {formatGenericDate(v.vchDate, 'DD-MMM-YYYY')}
+                      {formatGenericDate(
+                        v.vchDate,
+                        "DD-MMM-YYYY"
+                      )}
                     </td>
+
                     <td className="border border-red-200 px-4 py-0 font-medium text-neutral-900">
                       {v.supplier}
                     </td>
+
                     <td className="border border-red-200 px-4 py-0 tabular-nums text-neutral-600">
                       {v.vchNo}
                     </td>
+
                     <td className="border border-red-200 px-4 py-0 text-neutral-600">
-                      {v.refNo}
+                      {v.refNo || "-"}
                     </td>
 
                     <td className="border border-red-200 px-4 py-0 tabular-nums text-neutral-600">
-                      {formatGenericDate(v.refDate, 'DD-MMM-YYYY')}
-                    </td>
-                    <td className="border border-red-200 px-4 py-0">
-                      <StatusBadge status={v.voucherStatus} />
+                      {v.refDate
+                        ? formatGenericDate(
+                            v.refDate,
+                            "DD-MMM-YYYY"
+                          )
+                        : "-"}
                     </td>
 
-                    <td className="last:border-0 border border-red-200 px-4 py-0 text-right font-medium tabular-nums text-neutral-900">
-                      ₹ {inr.format(v.voucherAmount)}
+                    <td className="border border-red-200 px-4 py-0">
+                      <StatusBadge
+                        status={v.voucherStatus.toLowerCase() || "unknown"}
+                      />
+                    </td>
+
+                    <td className="border border-red-200 px-4 py-0 text-right font-medium tabular-nums text-neutral-900">
+                      ₹{" "}
+                      {Number(
+                        v.voucherAmount || 0
+                      ).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
+            {/* Empty state */}
             {rows.length === 0 && (
               <div className="flex flex-col items-center gap-1 py-16 text-center">
                 <p className="text-sm font-medium text-neutral-700">
                   No vouchers found
                 </p>
+
                 <p className="text-xs text-neutral-500">
-                  Change the date range, clear the search, or switch the status.
+                  Change the date range, clear the
+                  search, or switch the status.
                 </p>
               </div>
             )}
           </div>
 
-          {/* Footer total */}
-          <div className="flex items-center justify-between border-t border-neutral-200 bg-red-50 px-4 py-1 text-sm">
-            <span className="text-neutral-500">Total</span>
+          {/* ================= FOOTER ================= */}
+          <div className="flex items-center justify-between border-t border-neutral-200 bg-red-50 px-4 py-1.5 text-sm">
+            <span className="text-neutral-500">
+              Total
+            </span>
+
             <span className="font-semibold tabular-nums text-neutral-900">
-              ₹ {inr.format(total)}
+              ₹{" "}
+              {total.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </span>
           </div>
         </div>
@@ -423,4 +574,5 @@ const Dashboard = ({ vouchers = SAMPLE, onRowClick }) => {
     </div>
   );
 };
+
 export default Dashboard;

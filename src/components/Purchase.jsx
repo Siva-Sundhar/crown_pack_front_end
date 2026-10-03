@@ -20,8 +20,9 @@ import {
   calculatePurchaseRow,
   calculatePurchaseTotals,
 } from "../utils/purchase-calcultion.js";
-import { createPurchase } from "../api/purchaseApi.js";
+import { createPurchase, getVoucherNo } from "../api/purchaseApi.js";
 import { useNavigate } from "react-router-dom";
+import { useAppStore } from "../store/useAppStore.js";
 
 const emptyPurchaseRow = (tax = "") => ({
   id: Date.now() + Math.random(),
@@ -70,9 +71,18 @@ const Line = ({ label, value, bold }) => (
 const EDITABLE_COLS = [0, 1, 2, 3, 4];
 
 const Purchase = () => {
+
+  const supplier = useAppStore((s) => s.ledgerName);
+  const taxModeStore = useAppStore((s) => s.taxMode);
+  const taxTypeStore = useAppStore((s) => s.taxType);
+
+  console.log("Supplier from store:", supplier);
+  console.log("Tax Mode from store:", taxModeStore);
+  console.log("Tax Type from store:", taxTypeStore);
+
   const [formData, setFormData] = useState({
-    voucherNo: "PI/0001/26-27",
-    customerName: "ABC Private Ltd",
+    voucherNo: "",
+    customerName: supplier || "",
     voucherDate: toISODate(new Date()),
     referenceNo: "",
     referenceDate: "",
@@ -80,8 +90,8 @@ const Purchase = () => {
     createdBy: "",
     approvedBy: "",
     voucherStatus: "Pending",
-    taxMode: "VAT",
-    taxType: "intra",
+    taxMode: taxModeStore || "VAT",
+    taxType:  taxTypeStore || "intra",
     autoRound: true,
     totalAmount: "",
     totalQty: "",
@@ -153,7 +163,7 @@ const Purchase = () => {
   const [focusedExpenseCell, setFocusedExpenseCell] = useState(null);
   const [isLast, setIsLast] = useState(false);
   const [bottomView, setBottomView] = useState("expenses");
-  const navigate = useNavigate()
+  const navigate = useNavigate();
 
   /* Refs */
   const headerRefs = useRef([]);
@@ -162,6 +172,17 @@ const Purchase = () => {
   const expenseRefs = useRef({});
   const collapseBtnRef = useRef(null);
   const remarksRef = useRef(null);
+
+
+
+  useEffect(() => {
+    getVoucherNo().then((data) => {
+      console.log("Fetched voucher number:", data);
+      if (data ) {
+        setFormData((prev) => ({ ...prev, voucherNo: data }));
+      }
+    });
+  }, []);
 
   const setField = (name) => (e) =>
     setFormData((prev) => ({ ...prev, [name]: e.target.value }));
@@ -629,7 +650,7 @@ const Purchase = () => {
                 htmlFor="customerName"
                 className="font-semibold text-slate-700 whitespace-nowrap w-30"
               >
-                Customer
+                Supplier
               </label>
               :
               <input
@@ -658,7 +679,7 @@ const Purchase = () => {
                 id="taxmode"
                 type="text"
                 autoComplete="off"
-                value={formData.taxMode}
+                value={formData.taxMode.toUpperCase()}
                 onChange={setField("taxmode")}
                 onKeyDown={(e) =>
                   handleHeaderKeyDown(e, gridRefs.current["0-0"])
@@ -988,7 +1009,7 @@ const Purchase = () => {
                         ? "GST tax calculationtax slab"
                         : taxMode.toLowerCase() === "vat"
                           ? "VAT tax calculation by tax slab"
-                          : ""
+                          : "IGST tax calculation slab"
                       : "Additional expenses"}
                   </span>
                 </div>
@@ -1000,20 +1021,20 @@ const Purchase = () => {
                       <thead className="bg-slate-200">
                         <tr className="h-4.5">
                           <th className="border border-slate-400 px-2 text-left">
-                            {formData.taxMode === "VAT" ? "VAT %" : "GST %"}
+                            {formData.taxMode.toLocaleUpperCase() === "VAT" ? "VAT %" : "GST %"}
                           </th>
 
                           <th className="border border-slate-400 px-2 text-right">
                             Taxable
                           </th>
 
-                          {formData.taxMode === "VAT" && (
+                          {formData.taxMode.toLocaleUpperCase() === "VAT" && (
                             <th className="border border-slate-400 px-2 text-right">
                               VAT
                             </th>
                           )}
 
-                          {formData.taxMode === "GST" &&
+                          {formData.taxMode.toLocaleUpperCase() === "GST" &&
                             formData.taxType === "intra" && (
                               <>
                                 <th className="border border-slate-400 px-2 text-right">
@@ -1025,7 +1046,7 @@ const Purchase = () => {
                               </>
                             )}
 
-                          {formData.taxMode === "GST" &&
+                          {formData.taxMode.toLocaleUpperCase() === "IGST" &&
                             formData.taxType === "inter" && (
                               <th className="border border-slate-400 px-2 text-right">
                                 IGST
@@ -1062,13 +1083,13 @@ const Purchase = () => {
                                 {currencyFormatter(slab.taxable)}
                               </td>
 
-                              {formData.taxMode === "VAT" && (
+                              {formData.taxMode.toLocaleUpperCase() === "VAT" && (
                                 <td className="border border-slate-300 px-2 text-right">
                                   {currencyFormatter(slab.vat)}
                                 </td>
                               )}
 
-                              {formData.taxMode === "GST" &&
+                              {formData.taxMode.toLocaleUpperCase() === "GST" &&
                                 formData.taxType === "intra" && (
                                   <>
                                     <td className="border border-slate-300 px-2 text-right">
@@ -1081,7 +1102,7 @@ const Purchase = () => {
                                   </>
                                 )}
 
-                              {formData.taxMode === "GST" &&
+                              {formData.taxMode.toLocaleUpperCase() === "IGST" &&
                                 formData.taxType === "inter" && (
                                   <td className="border border-slate-300 px-2 text-right">
                                     {currencyFormatter(slab.igst)}
@@ -1128,7 +1149,7 @@ const Purchase = () => {
                             </>
                           )}
 
-                          {taxMode === "GST" && taxType === "INTER" && (
+                          {taxMode  === "IGST" && taxType === "INTER" && (
                             <td className="border border-slate-400 px-2 text-right">
                               {currencyFormatter(totals.igst)}
                             </td>
@@ -1321,22 +1342,22 @@ const Purchase = () => {
 
               <Line label="Add on & Others" value={totals.expenseAmount} />
 
-              {formData.taxMode === "VAT" && (
+              {formData.taxMode.toLocaleUpperCase() === "VAT" && (
                 <Line label="VAT" value={totals.vat} />
               )}
 
-              {formData.taxMode === "GST" && formData.taxType === "intra" && (
+              {formData.taxMode.toLocaleUpperCase() === "GST" && formData.taxType === "intra" && (
                 <>
                   <Line label="CGST" value={totals.cgst} />
                   <Line label="SGST / UTGST" value={totals.sgst} />
                 </>
               )}
 
-              {formData.taxMode === "GST" && formData.taxType === "inter" && (
+              {formData.taxMode.toLocaleUpperCase() === "IGST" && formData.taxType === "inter" && (
                 <Line label="IGST" value={totals.igst} />
               )}
 
-              {formData.taxMode !== "NONE" && (
+              {formData.taxMode.toLocaleUpperCase() !== "NONE" && (
                 <Line label="Total Tax" value={totals.tax} />
               )}
 

@@ -1,12 +1,15 @@
 import { create } from "zustand";
-import {
-  persist,
-  createJSONStorage,
-} from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 
 const initialState = {
   token: null,
-  username: null,
+  email: null,
+  currency: null,
+  currencySymbol: null,
+  ledgerName: null,
+  role: null,
+  taxMode: null,
+  taxType: null,
 
   customers: [],
   items: [],
@@ -21,10 +24,26 @@ export const useAppStore = create(
     (set) => ({
       ...initialState,
 
-      login: (token, username) => {
+      login: (
+        token,
+        email,
+        currency,
+        currencySymbol,
+        ledgerName,
+        role,
+        taxMode,
+        taxType,
+      ) => {
         set({
           token,
-          username,
+          email,
+          currency,
+          currencySymbol,
+          ledgerName,
+          role,
+          taxMode,
+          taxType,
+
           error: null,
         });
       },
@@ -64,8 +83,17 @@ export const useAppStore = create(
       // Store only authentication information
       partialize: (state) => ({
         token: state.token,
-        username: state.username,
+        email: state.email,
+
+        currency: state.currency,
+        currencySymbol: state.currencySymbol,
+        ledgerName: state.ledgerName,
+        role: state.role,
+        taxMode: state.taxMode,
+        taxType: state.taxType,
+
+        
       }),
-    }
-  )
+    },
+  ),
 );
