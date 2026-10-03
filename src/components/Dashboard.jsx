@@ -62,6 +62,7 @@ const Dashboard = () => {
   const setPurchases = useAppStore((state) => state.setPurchases);
   const setLoading = useAppStore((state) => state.setLoading);
   const setError = useAppStore((state) => state.setError);
+  const setLogout = useAppStore((state) => state.logout);
 
   const supplier = useAppStore((state) => state.ledgerName);
 
@@ -213,9 +214,8 @@ const Dashboard = () => {
    * uses a different authentication token key.
    */
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("accessToken");
 
+    setLogout(); // Call the logout function from the store to clear state and remove session storage
     setProfileOpen(false);
 
     navigate("/login");

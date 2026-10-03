@@ -87,7 +87,6 @@ const LoginPage = () => {
     try {
       const response = await verifyOtp(email, cleanOtp);
 
-      console.log("Data", response.data);
 
       const token = response.data.token;
 

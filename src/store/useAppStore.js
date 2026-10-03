@@ -52,6 +52,7 @@ export const useAppStore = create(
         set({
           ...initialState,
         });
+        sessionStorage.removeItem("app-auth-storage");
       },
 
       setCustomers: (customers) => {

@@ -47,16 +47,6 @@ export const getPurchaseById = async (id) => {
   return { voucher, files };
 };
 
-export const updatePurchase = async ({ id, voucherData, attachments = [] }) => {
-  const multipartData = buildMultipartData({
-    voucherData,
-    attachments,
-  });
-
-  const response = await api.put(`/api/purchases/${id}`, multipartData);
-
-  return response.data;
-};
 
 export const deletePurchase = async (id) => {
   const response = await api.delete(`/api/purchases/${id}`);

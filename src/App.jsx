@@ -25,7 +25,7 @@ const App = () => {
         {/* Protected Route */}
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/purchase" element={<Purchase />} />
+          <Route path="/purchase" element={<AlterPurchase />} />
           <Route
             path="/purchase/alter/:id"
             element={<AlterPurchase />}
